@@ -22,7 +22,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const domain = req.headers.get('origin') || 'http://localhost:3000';
+    const domain = req.headers.get('origin') || 'https://btailabs.vercel.app';
     
     // PayOS requires orderCode to be a number (max 53 bit)
     // We use timestamp suffix to ensure uniqueness
