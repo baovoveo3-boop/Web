@@ -2,11 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { CheckCircle } from 'lucide-react';
+import { CheckCircle, ShoppingCart } from 'lucide-react';
 import Header from '@/components/Header';
 import ElasticCarousel from '@/components/ElasticCarousel';
 import ImageModal from '@/components/ImageModal';
 import Footer from '@/components/Footer';
+import { useCart } from '@/app/context/CartContext';
+import { useAuth } from '@/context/AuthContext';
+import CheckoutModal from '@/components/CheckoutModal';
 import { ToolData } from '@/data/tools';
 
 interface ToolDetailClientProps {
@@ -16,6 +19,9 @@ interface ToolDetailClientProps {
 export default function ToolDetailClient({ tool }: ToolDetailClientProps) {
   const [openIndices, setOpenIndices] = useState<number[]>([]);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const { addToCart } = useCart();
+  const { user, userData } = useAuth();
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [promoParam, setPromoParam] = useState('');
 
   useEffect(() => {
@@ -27,6 +33,31 @@ export default function ToolDetailClient({ tool }: ToolDetailClientProps) {
       setPromoParam(sanitized);
     }
   }, []);
+
+  const handleDownloadTool = () => {
+    if (!user || !userData) {
+      alert("Vui lòng đăng nhập để tải công cụ!");
+      window.location.href = "/login";
+      return;
+    }
+    
+    // 1. Kiểm tra Quyền Truy Cập (Paywall)
+    const isPremium = tool.price !== "Miễn phí";
+    const hasAccess = !isPremium || 
+      userData.currentTier === "vip" || 
+      userData.currentTier === "ultimate" || 
+      userData.purchasedProducts?.some(p => p.id === tool.id);
+
+    if (!hasAccess) {
+      if (confirm("Công cụ này yêu cầu gói VIP/Ultimate hoặc phải mua lẻ. Bạn có muốn đi đến trang Nạp tiền để nâng cấp gói?")) {
+        window.location.href = "/hub?tab=wallet";
+      }
+      return;
+    }
+
+    // 2. Tải Tool
+    alert("Bắt đầu tải công cụ... (Tính năng đang phát triển)");
+  };
 
   const toggleFAQ = (index: number) => {
     if (openIndices.includes(index)) {
@@ -130,41 +161,41 @@ export default function ToolDetailClient({ tool }: ToolDetailClientProps) {
               </section>
 
               {/* FAQ Section */}
-              <section data-testid="tool-faq" className="space-y-4">
-                <h3 className="text-xl font-bold text-white border-l-4 border-neonGreen pl-3">Câu Hỏi Thường Gặp</h3>
-                <div className="space-y-3">
-                  {faq.map((item, idx) => {
-                    const isOpen = openIndices.includes(idx);
-                    return (
-                      <div 
-                        key={idx} 
-                        data-testid="tool-faq-item" 
-                        className="border border-zinc-850 rounded-xl bg-zinc-900/30 overflow-hidden"
-                      >
-                        <button
-                          type="button"
-                          data-testid="tool-faq-question"
-                          onClick={() => toggleFAQ(idx)}
-                          className="w-full flex items-center justify-between p-4 text-left font-bold text-white hover:bg-zinc-900/50 transition duration-200"
-                        >
-                          <span className="break-words">{item.question}</span>
-                          <span className="ml-2 flex-shrink-0 text-zinc-400">
-                            {isOpen ? '▲' : '▼'}
-                          </span>
-                        </button>
+              {faq.length > 0 && (
+                <section data-testid="tool-faq" className="space-y-4">
+                  <h3 className="text-xl font-bold text-white border-l-4 border-neonGreen pl-3">Câu Hỏi Thường Gặp</h3>
+                  <div className="space-y-3">
+                    {faq.map((item, idx) => {
+                      const isOpen = openIndices.includes(idx);
+                      return (
                         <div 
-                          data-testid="tool-faq-answer"
-                          className={`transition-all duration-300 overflow-hidden ${
-                            isOpen ? 'max-h-96 p-4 border-t border-zinc-850 text-zinc-300' : 'max-h-0 opacity-0'
-                          }`}
+                          key={idx} 
+                          data-testid="tool-faq-item" 
+                          className="border border-zinc-850 rounded-xl bg-zinc-900/30 overflow-hidden"
                         >
-                          <p className="text-sm md:text-base leading-relaxed break-words">{item.answer}</p>
+                          <button
+                            type="button"
+                            data-testid="tool-faq-question"
+                            onClick={() => toggleFAQ(idx)}
+                            className="w-full flex items-center justify-between p-4 text-left font-bold text-white hover:bg-zinc-900/50 transition duration-200"
+                          >
+                            <span className="break-words">{item.question}</span>
+                            <span className={`text-neonGreen transform transition duration-300 ${isOpen ? 'rotate-45' : ''}`}>
+                              <CheckCircle className="w-5 h-5" />
+                            </span>
+                          </button>
+                          <div 
+                            data-testid="tool-faq-answer"
+                            className={`px-4 pb-4 text-zinc-400 text-sm md:text-base leading-relaxed break-words transition-all duration-300 ${isOpen ? 'block' : 'hidden'}`}
+                          >
+                            {item.answer}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
             </div>
 
             {/* Right Column: Main Info Block & CTA & Sidebar Hot Tools */}
@@ -204,13 +235,30 @@ export default function ToolDetailClient({ tool }: ToolDetailClientProps) {
                   </span>
                 </div>
 
-                <Link 
-                  href={ctaHref} 
-                  data-testid="tool-cta"
-                  className="flex items-center justify-center w-full py-4 rounded-xl font-bold text-zinc-950 bg-gradient-to-r from-neonGreen to-emerald-400 hover:scale-[1.02] active:scale-100 transition transform shadow-[0_0_25px_rgba(34,197,94,0.4)] text-center text-base"
-                >
-                  Mua Ngay →
-                </Link>
+                <div className="flex gap-2 pt-2">
+                  <button 
+                    onClick={handleDownloadTool}
+                    className="flex-1 py-4 rounded-xl font-bold text-zinc-950 bg-gradient-to-r from-neonGreen to-emerald-400 hover:scale-[1.02] transition transform shadow-[0_0_20px_rgba(34,197,94,0.3)] text-center text-base"
+                  >
+                    Tải Công Cụ Này
+                  </button>
+                  <button 
+                    onClick={() => {
+                      addToCart({
+                        id: tool.id,
+                        name: tool.name,
+                        priceText: tool.price,
+                        originalPriceText: tool.originalPriceText,
+                        type: 'tool'
+                      });
+                      alert('Đã thêm vào giỏ hàng!');
+                    }}
+                    className="w-14 h-14 shrink-0 flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 hover:border-zinc-500 transition text-white"
+                    title="Thêm vào giỏ"
+                  >
+                    <ShoppingCart className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
 
               {/* Sidebar Hot Tools navigation section */}

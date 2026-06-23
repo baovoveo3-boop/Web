@@ -1,32 +1,54 @@
 import { notFound } from 'next/navigation';
-import { COMBOS_DATA } from '@/data/combos';
+import { db } from '@/lib/firebase';
+import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 import ComboDetailClient from '@/components/ComboDetailClient';
 import { Metadata } from 'next';
 
 export async function generateStaticParams() {
-  return COMBOS_DATA.map((combo) => ({
-    id: combo.id,
-  }));
+  const querySnapshot = await getDocs(collection(db, "products"));
+  const paths: { id: string }[] = [];
+  querySnapshot.forEach((doc) => {
+    paths.push({ id: doc.id });
+  });
+  return paths;
 }
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
-  const combo = COMBOS_DATA.find((c) => c.id === params.id);
-  if (!combo) {
-    return {
-      title: 'Combo Not Found',
-    };
+  const docRef = doc(db, "products", params.id);
+  const docSnap = await getDoc(docRef);
+  if (!docSnap.exists()) {
+    return { title: 'Sản phẩm không tồn tại' };
   }
-  return {
-    title: `${combo.titlePrefix} ${combo.titleHighlight}`,
-  };
+  const data = docSnap.data();
+  return { title: data.name };
 }
 
-export default function ComboDetailPage({ params }: { params: { id: string } }) {
-  const combo = COMBOS_DATA.find((c) => c.id === params.id);
+export default async function ComboDetailPage({ params }: { params: { id: string } }) {
+  const docRef = doc(db, "products", params.id);
+  const docSnap = await getDoc(docRef);
 
-  if (!combo) {
+  if (!docSnap.exists()) {
     notFound();
   }
 
-  return <ComboDetailClient combo={combo} />;
+  const data = docSnap.data();
+  
+  const product = {
+    id: docSnap.id,
+    name: data.name || "",
+    tag: data.badgeText || (data.category === 'combo' ? "COMBO" : "SẢN PHẨM"),
+    titlePrefix: data.name?.split(' ')[0] || "",
+    titleHighlight: data.name?.split(' ').slice(1).join(' ') || "",
+    description: data.description || "",
+    price: data.price ? `${Number(data.price).toLocaleString()}đ` : "Miễn phí",
+    image: data.imageUrl || "/combo.png",
+    gallery: data.gallery || [],
+    features: [], 
+    theme: "from-rose-500 to-pink-500",
+    glow: "bg-rose-500/20",
+    items: [], 
+    faq: data.faqs || []
+  };
+
+  return <ComboDetailClient combo={product as any} />;
 }

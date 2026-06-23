@@ -17,6 +17,7 @@ export interface ToolData {
   titleHighlight: string;
   description: string;
   price: string;
+  originalPriceText?: string;
   image: string;
   features: Feature[];
   theme: string;

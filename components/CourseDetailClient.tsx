@@ -9,6 +9,7 @@ import ImageModal from '@/components/ImageModal';
 import Footer from '@/components/Footer';
 import { CourseData } from '@/data/courses';
 import { useCart } from '@/app/context/CartContext';
+import { useAuth, registerWebDevice } from '@/context/AuthContext';
 import CheckoutModal from '@/components/CheckoutModal';
 import { ShoppingCart } from 'lucide-react';
 
@@ -20,7 +21,44 @@ export default function CourseDetailClient({ course }: CourseDetailClientProps) 
   const [openIndices, setOpenIndices] = useState<number[]>([]);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const { addToCart } = useCart();
+  const { user, userData } = useAuth();
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+
+  const handleEnterCourse = async () => {
+    if (!user || !userData) {
+      alert("Vui lòng đăng nhập để truy cập khóa học!");
+      window.location.href = "/login";
+      return;
+    }
+    
+    // 1. Kiểm tra Quyền Truy Cập (Paywall)
+    const isPremium = course.price !== "Miễn phí";
+    const hasAccess = !isPremium || 
+      userData.currentTier === "vip" || 
+      userData.currentTier === "ultimate" || 
+      userData.purchasedProducts?.some(p => p.id === course.id);
+
+    if (!hasAccess) {
+      if (confirm("Nội dung này yêu cầu gói VIP/Ultimate hoặc phải mua lẻ. Bạn có muốn đi đến trang Nạp tiền để nâng cấp gói?")) {
+        window.location.href = "/hub?tab=wallet";
+      }
+      return;
+    }
+
+    // 2. Nếu là khóa học Premium, đăng ký Web Device
+    // (Miễn phí thì không cần kiểm tra thiết bị)
+    if (isPremium && registerWebDevice) {
+      const res = await registerWebDevice(userData.uid, userData.maxWebDevices || 1, userData.webDevices || []);
+      if (!res.success) {
+        alert(res.error);
+        return;
+      }
+    }
+
+    // 3. Vào học
+    alert("Chào mừng bạn vào lớp học! (Tính năng đang phát triển)");
+    // window.location.href = `/courses/${course.id}/watch`;
+  };
 
   const toggleFAQ = (index: number) => {
     if (openIndices.includes(index)) {
@@ -83,25 +121,27 @@ export default function CourseDetailClient({ course }: CourseDetailClientProps) 
               </section>
 
               {/* FAQ Section */}
-              <section className="space-y-4">
-                <h3 className="text-xl font-bold text-white border-l-4 border-neonGreen pl-3">Câu Hỏi Thường Gặp</h3>
-                <div className="space-y-3">
-                  {faq.map((item, idx) => {
-                    const isOpen = openIndices.includes(idx);
-                    return (
-                      <div key={idx} className="border border-zinc-850 rounded-xl bg-zinc-900/30 overflow-hidden">
-                        <button onClick={() => toggleFAQ(idx)} className="w-full flex items-center justify-between p-4 text-left font-bold text-white hover:bg-zinc-900/50 transition duration-200">
-                          <span className="break-words">{item.question}</span>
-                          <span className="ml-2 flex-shrink-0 text-zinc-400">{isOpen ? '▲' : '▼'}</span>
-                        </button>
-                        <div className={`transition-all duration-300 overflow-hidden ${isOpen ? 'max-h-96 p-4 border-t border-zinc-850 text-zinc-300' : 'max-h-0 opacity-0'}`}>
-                          <p className="text-sm md:text-base leading-relaxed break-words">{item.answer}</p>
+              {faq.length > 0 && (
+                <section className="space-y-4">
+                  <h3 className="text-xl font-bold text-white border-l-4 border-neonGreen pl-3">Câu Hỏi Thường Gặp</h3>
+                  <div className="space-y-3">
+                    {faq.map((item, idx) => {
+                      const isOpen = openIndices.includes(idx);
+                      return (
+                        <div key={idx} className="border border-zinc-850 rounded-xl bg-zinc-900/30 overflow-hidden">
+                          <button onClick={() => toggleFAQ(idx)} className="w-full flex items-center justify-between p-4 text-left font-bold text-white hover:bg-zinc-900/50 transition duration-200">
+                            <span className="break-words">{item.question}</span>
+                            <span className="ml-2 flex-shrink-0 text-zinc-400">{isOpen ? '▲' : '▼'}</span>
+                          </button>
+                          <div className={`transition-all duration-300 overflow-hidden ${isOpen ? 'max-h-96 p-4 border-t border-zinc-850 text-zinc-300' : 'max-h-0 opacity-0'}`}>
+                            <p className="text-sm md:text-base leading-relaxed break-words">{item.answer}</p>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
             </div>
 
             {/* Right Column */}
@@ -141,10 +181,10 @@ export default function CourseDetailClient({ course }: CourseDetailClientProps) 
 
                 <div className="flex gap-2 pt-2">
                   <button 
-                    onClick={() => setIsCheckoutOpen(true)}
+                    onClick={handleEnterCourse}
                     className="flex-1 py-4 rounded-xl font-bold text-zinc-950 bg-gradient-to-r from-neonGreen to-emerald-400 hover:scale-[1.02] transition transform shadow-[0_0_20px_rgba(34,197,94,0.3)] text-center text-base"
                   >
-                    Mua Ngay
+                    Vào Học Ngay
                   </button>
                   <button 
                     onClick={() => {

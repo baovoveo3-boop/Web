@@ -20,6 +20,7 @@ export interface StoreItem {
   icon: any;
   actionText: string;
   rating?: string;
+  faqs?: { question: string; answer: string }[];
 }
 
 export const COMBOS: StoreItem[] = [

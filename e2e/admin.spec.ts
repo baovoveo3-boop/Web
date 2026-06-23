@@ -521,4 +521,99 @@ test.describe('Admin Dashboard E2E Test Suite', () => {
 
   });
 
+  test.describe('8. CSV Export Feature', () => {
+
+    test.beforeEach(async ({ page }) => {
+      const adminUser = {
+        uid: 'admin1',
+        email: 'admin@test.com'
+      };
+      await setupMocks(page, adminUser, mockDbData);
+      await page.goto('/admin');
+    });
+
+    test('Verify presence of CSV Export button and opening of modal', async ({ page }) => {
+      const exportBtn = page.locator('button:has-text("Xuất CSV Nâng cao")');
+      await expect(exportBtn).toBeVisible();
+      
+      // Click button to open modal
+      await exportBtn.click();
+      
+      // Verify modal is open
+      const modalHeader = page.locator('h3:has-text("Xuất Báo cáo CSV Nâng cao")');
+      await expect(modalHeader).toBeVisible();
+      
+      // Verify select options are visible
+      const selectReport = page.locator('select').first();
+      await expect(selectReport).toBeVisible();
+      
+      const optionMonth = selectReport.locator('option[value="monthly-revenue"]');
+      await expect(optionMonth).toHaveText('Báo cáo doanh thu hàng tháng');
+      
+      // Cancel button should close modal
+      const cancelBtn = page.locator('button:has-text("Hủy")');
+      await expect(cancelBtn).toBeVisible();
+      await cancelBtn.click();
+      
+      await expect(modalHeader).not.toBeVisible();
+    });
+
+    test('Verify CSV export download functionality and file contents', async ({ page }) => {
+      // Open the modal
+      await page.click('button:has-text("Xuất CSV Nâng cao")');
+      
+      // Select product revenue report
+      await page.selectOption('select', 'product-revenue');
+      
+      // Listen for download event
+      const downloadPromise = page.waitForEvent('download');
+      
+      // Click Export button
+      await page.click('button:has-text("Xuất file CSV")');
+      
+      const download = await downloadPromise;
+      expect(download.suggestedFilename()).toContain('Bao_cao_doanh_thu_theo_san_pham');
+      expect(download.suggestedFilename()).toContain('.csv');
+      
+      // Read file and parse content
+      const path = await download.path();
+      const fs = require('fs');
+      const content = fs.readFileSync(path, 'utf8');
+      
+      // The CSV output should contain seeded product revenue from mockDbData
+      expect(content).toContain('Gói Quét Vàng');
+      expect(content).toContain('150000');
+    });
+
+    test('Verify custom date range inputs work and filter CSV data', async ({ page }) => {
+      await page.click('button:has-text("Xuất CSV Nâng cao")');
+      
+      // Click Custom date range tab button
+      const customTabBtn = page.locator('button:has-text("Tùy chọn khoảng ngày")');
+      await customTabBtn.click();
+      
+      // Check that fromDate and toDate input fields are visible
+      const fromDateInput = page.locator('input[type="date"]').first();
+      const toDateInput = page.locator('input[type="date"]').last();
+      await expect(fromDateInput).toBeVisible();
+      await expect(toDateInput).toBeVisible();
+      
+      // Set toDate to a past date where no orders/transactions exist (e.g. 2026-06-01)
+      await fromDateInput.fill('2026-06-01');
+      await toDateInput.fill('2026-06-05');
+      
+      // Select report type "monthly-revenue"
+      await page.selectOption('select', 'monthly-revenue');
+      
+      // Trigger export and handle potential dialog alert if no data is found
+      page.on('dialog', async dialog => {
+        expect(dialog.message()).toContain('Không có dữ liệu phù hợp');
+        await dialog.accept();
+      });
+      
+      await page.click('button:has-text("Xuất file CSV")');
+    });
+  });
+
 });
+

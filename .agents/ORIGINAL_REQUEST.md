@@ -70,3 +70,87 @@ Tạo trang `/admin/orders` để xem lịch sử nạp tiền/mua hàng. Tạo 
 
 ### User Management
 - [ ] Có thể nhấn nút cấp quyền `admin` cho một user đang là `user` bình thường thông qua bảng quản lý người dùng.
+
+## Follow-up — 2026-06-22T07:46:41Z
+
+Xây dựng hệ thống Báo cáo & Thống kê nâng cao (Advanced Reporting Dashboard) cho trang Admin. Hệ thống sẽ truy xuất dữ liệu từ Firebase (`users`, `orders`, `transactions`) để tạo ra các biểu đồ và số liệu theo thời gian thực.
+
+Working directory: E:\Youtube\Ban Content\Web
+Integrity mode: benchmark
+
+## Requirements
+
+### R1. Xây dựng các báo cáo cốt lõi
+Phát triển một trang Dashboard tổng hợp, bao gồm 4 nhóm dữ liệu:
+- Doanh thu theo thời gian (tổng từ đơn hàng và nạp ví).
+- Tăng trưởng User mới.
+- Xếp hạng Sản phẩm (Course/Tool) bán chạy nhất.
+- Thống kê tỷ lệ Giao dịch nạp tiền thành công/thất bại.
+
+### R2. Bộ lọc thời gian dùng chung
+Tích hợp bộ chọn mốc thời gian nhanh (Hôm nay, Tuần này, Tháng này, Năm nay). Khi thay đổi bộ lọc, toàn bộ các chỉ số và biểu đồ trên trang phải được cập nhật lại tương ứng.
+
+### R3. Đồng bộ giao diện
+Tái sử dụng các UI components có sẵn trong dự án (như card, button, styling từ Tailwind) để giữ tính đồng nhất. Cài đặt và sử dụng thư viện `recharts` (hoặc tương đương) để dựng biểu đồ trực quan.
+
+## Acceptance Criteria
+
+### Tính năng
+- [ ] Truy cập trang báo cáo không xảy ra lỗi crash.
+- [ ] Khi chọn một mốc thời gian (VD: "Tháng này"), các chỉ số và biểu đồ tự động cập nhật lại dữ liệu tương ứng.
+- [ ] Biểu đồ (Recharts) hiển thị chính xác trục X (thời gian) và trục Y (giá trị).
+- [ ] Dữ liệu được tính toán đúng với cấu trúc Firestore hiện tại (sử dụng trường `createdAt` của users, orders, transactions).
+
+### Giao diện
+- [ ] Tích hợp mượt mà vào Layout hiện tại của trang Admin.
+- [ ] Giao diện có tính đáp ứng (Responsive) cơ bản trên máy tính.
+
+## Victory Audit Request — 2026-06-22T08:42:12Z
+
+You are acting as the independent Victory Auditor for the Advanced Reporting Dashboard implementation.
+Although you inherit the Sentinel's configuration, your ONLY role in this sub-conversation is to perform the independent post-victory audit (acting as the victory_auditor).
+Do NOT act as the Sentinel. Do NOT run crons, do NOT start the orchestrator.
+Your working directory is: E:\Youtube\Ban Content\Web\.agents\victory_auditor_reporting_dashboard_self\
+Please:
+1. Perform the 3-phase victory audit:
+   - Phase A: Timeline Audit (review plan, progress, and execution logs under .agents/orchestrator_reporting_dashboard/ and .agents/worker_reporting_dashboard_m*/).
+   - Phase B: Cheating Detection (verify app/admin/page.tsx has no hardcoded values, facades, or shortcuts).
+   - Phase C: Independent Verification (statically verify the date parsers, filters, Recharts charts, and Playwright tests in e2e/admin.spec.ts).
+2. Read .agents/ORIGINAL_REQUEST.md to ensure all requirements and acceptance criteria under '## Follow-up — 2026-06-22T07:46:41Z' are met.
+3. Write your findings and final verdict in E:\Youtube\Ban Content\Web\.agents\victory_auditor_reporting_dashboard_self\audit_report.md.
+4. Report back to the parent Sentinel with a message containing your structured verdict: VICTORY CONFIRMED or VICTORY REJECTED.
+Be extremely thorough and forensic!
+
+## Follow-up — 2026-06-22T10:10:38Z
+
+Xây dựng cụm tính năng quản lý nâng cao: Bao gồm hệ thống Xuất Báo Cáo (Export CSV) phục vụ việc kinh doanh trên Admin Dashboard, và khôi phục hiệu ứng "Sắp ra mắt" (Empty State) cho Trang chủ khi chưa có dữ liệu sản phẩm.
+
+Working directory: E:\Youtube\Ban Content\Web
+Integrity mode: benchmark
+
+## Requirements
+
+### R1. Tính năng Xuất Báo Cáo (Export CSV) cho Quản lý
+Thêm chức năng xuất báo cáo dưới dạng file CSV (sử dụng thư viện `papaparse`) tại Admin Dashboard. Hệ thống báo cáo cần hỗ trợ bộ lọc tuỳ chỉnh (lọc theo ngày/tháng/năm, khoảng thời gian từ ngày đến ngày, theo sản phẩm, theo tài khoản) và bao gồm các loại dữ liệu sau:
+- Báo cáo doanh thu hàng tháng.
+- Báo cáo doanh thu theo từng sản phẩm.
+- Top tài khoản chi tiêu mua hàng nhiều nhất.
+- Top tài khoản sử dụng tài nguyên miễn phí nhiều nhất.
+- Bảng xếp hạng các Tool/Khóa học được sử dụng nhiều nhất.
+
+### R2. Trạng thái "Sắp ra mắt" (Empty State) trên Trang chủ
+Khi dữ liệu Firebase trả về danh sách Khóa học (Courses) hoặc Công cụ (Tools) trống rỗng, trang chủ (`app/page.tsx`) không được phép bị lỗi hiển thị hay để trống. Thay vào đó, hệ thống phải tự động fallback về hiển thị các thẻ (cards) "Sắp ra mắt".
+**Lưu ý quan trọng**: Các thẻ "Sắp ra mắt" này phải được phục dựng lại ĐÚNG HỆT như đoạn code cứng (hardcode) thiết kế ban đầu của dự án, bao gồm đầy đủ các hiệu ứng ánh sáng (glow, animation lấp lánh) và cấu hình giao diện.
+
+## Acceptance Criteria
+
+### Hệ thống Báo Cáo (Export)
+- [ ] Giao diện Admin có Modal/Nút chức năng rõ ràng để người dùng chọn Bộ lọc (Thời gian, Loại báo cáo) và nhấn "Xuất CSV".
+- [ ] File CSV tải xuống có cấu trúc cột rõ ràng, hiển thị đúng dữ liệu Doanh thu, Sản phẩm bán chạy và Xếp hạng Users. Tiếng Việt hiển thị tốt khi mở bằng Excel (hỗ trợ BOM/UTF-8).
+- [ ] Bộ lọc mốc thời gian hoạt động chính xác khi query dữ liệu từ Firestore.
+
+### Giao diện Trang chủ (Empty State)
+- [ ] Khi xoá sạch dữ liệu thử nghiệm trong Firestore, trang chủ vẫn load thành công.
+- [ ] Khối Khóa học và Công cụ hiển thị dải 3-4 hộp "Sắp ra mắt" with thiết kế nguyên bản (có viền lấp lánh, ngôi sao lấp lánh).
+- [ ] Không làm phá vỡ cấu trúc Responsive của giao diện hiện tại.
+

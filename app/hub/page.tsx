@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import CircuitAnimation from '@/components/CircuitAnimation';
 import { useAuth } from '@/context/AuthContext';
+import { useStoreProducts } from '@/hooks/useStoreProducts';
 
 function HubContent() {
   const searchParams = useSearchParams();
@@ -20,17 +21,18 @@ function HubContent() {
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const { user, userData, loading } = useAuth();
+  const { allProducts } = useStoreProducts();
+  
   // Format account tier display text
-  let tierText = 'Free';
-  let isVip = false;
-  let isUltimate = false;
+  let tierText = userData?.currentTier ? userData.currentTier.charAt(0).toUpperCase() + userData.currentTier.slice(1) : 'Free';
+  let isVip = userData?.currentTier === 'vip' || plan === 'vip';
+  let isUltimate = userData?.currentTier === 'ultimate' || plan === 'ultimate';
   
   if (plan === 'vip') {
     tierText = billing === 'yearly' ? 'VIP (Yearly)' : 'VIP (Monthly)';
-    isVip = true;
   } else if (plan === 'ultimate') {
     tierText = billing === 'yearly' ? 'Ultimate (Yearly)' : 'Ultimate (Monthly)';
-    isUltimate = true;
   }
 
   // Active status state
@@ -53,7 +55,6 @@ function HubContent() {
   const [activeTab, setActiveTab] = useState('overview');
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
 
-  const { user, userData } = useAuth();
   const [isLoadingPayment, setIsLoadingPayment] = useState(false);
 
   const handlePayment = async () => {
@@ -94,19 +95,19 @@ function HubContent() {
   };
 
   useEffect(() => {
+    if (!loading && !user) {
+      window.location.href = '/login';
+      return;
+    }
+    
     if (typeof window !== 'undefined') {
-      if (localStorage.getItem('isLoggedIn') !== 'true') {
-        window.location.href = '/login';
-        return;
-      }
-      
       const search = new URLSearchParams(window.location.search);
       const tab = search.get('tab');
       if (tab) {
         setActiveTab(tab);
       }
     }
-  }, []);
+  }, [user, loading]);
 
   // Payment State
   const [amount, setAmount] = useState<number | ''>('');
@@ -217,13 +218,13 @@ function HubContent() {
                   <User className="h-5 w-5" />
                 </div>
                 <div>
-                  <div className="text-sm font-bold text-white">Guest User</div>
+                  <div className="text-sm font-bold text-white">{userData?.displayName || user?.email?.split('@')[0] || "Người dùng"}</div>
                   <div className="text-xs text-zinc-400">{tierText}</div>
                 </div>
               </div>
               <div className="bg-[#0B0510]/50 rounded-lg p-2 flex justify-between items-center border border-[#3A2266]/50/50">
                 <span className="text-xs text-zinc-400">Số dư ví:</span>
-                <span className="text-sm font-bold text-neonGreen">0 ₫</span>
+                <span className="text-sm font-bold text-neonGreen">{userData?.walletBalance?.toLocaleString() || 0} ₫</span>
               </div>
             </div>
 
@@ -267,7 +268,7 @@ function HubContent() {
                   
                   {/* Lời chào */}
                   <div>
-                    <h2 className="text-3xl font-extrabold text-white mb-2">Xin chào, Guest User!</h2>
+                    <h2 className="text-3xl font-extrabold text-white mb-2">Xin chào, {userData?.displayName?.split(' ')[0] || user?.email?.split('@')[0] || "bạn"}!</h2>
                     <p className="text-zinc-400">Tổng quan tài khoản của bạn</p>
                   </div>
 
@@ -276,7 +277,7 @@ function HubContent() {
                     <div className="rounded-xl border border-blue-500/30 bg-zinc-900/50 backdrop-blur p-6 hover:border-blue-500/50 transition flex justify-between items-center group shadow-lg">
                       <div>
                         <p className="text-sm font-medium text-zinc-400 mb-2">Số dư ví</p>
-                        <h3 className="text-3xl font-bold text-white group-hover:text-blue-400 transition">0<span className="text-xl text-zinc-500">₫</span></h3>
+                        <h3 className="text-3xl font-bold text-white group-hover:text-blue-400 transition">{userData?.walletBalance?.toLocaleString() || 0}<span className="text-xl text-zinc-500">₫</span></h3>
                       </div>
                       <span className="p-3 rounded-xl bg-blue-500/20 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.2)]">
                         <Wallet className="h-6 w-6" />
@@ -286,7 +287,7 @@ function HubContent() {
                     <div className="rounded-xl border border-purple-500/30 bg-zinc-900/50 backdrop-blur p-6 hover:border-purple-500/50 transition flex justify-between items-center group shadow-lg">
                       <div>
                         <p className="text-sm font-medium text-zinc-400 mb-2">Khóa học đã mua</p>
-                        <h3 className="text-3xl font-bold text-white group-hover:text-purple-400 transition">0</h3>
+                        <h3 className="text-3xl font-bold text-white group-hover:text-purple-400 transition">{userData?.purchasedProducts?.length || 0}</h3>
                       </div>
                       <span className="p-3 rounded-xl bg-purple-500/20 text-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.2)]">
                         <BookOpen className="h-6 w-6" />
@@ -296,7 +297,7 @@ function HubContent() {
                     <div className="rounded-xl border border-pink-500/30 bg-zinc-900/50 backdrop-blur p-6 hover:border-pink-500/50 transition flex justify-between items-center group shadow-lg">
                       <div>
                         <p className="text-sm font-medium text-zinc-400 mb-2">Công cụ đã mua</p>
-                        <h3 className="text-3xl font-bold text-white group-hover:text-pink-400 transition">0</h3>
+                        <h3 className="text-3xl font-bold text-white group-hover:text-pink-400 transition">{userData?.purchasedProducts?.length || 0}</h3>
                       </div>
                       <span className="p-3 rounded-xl bg-pink-500/20 text-pink-400 shadow-[0_0_15px_rgba(236,72,153,0.2)]">
                         <Hammer className="h-6 w-6" />
@@ -331,88 +332,46 @@ function HubContent() {
                         </button>
                       </div>
                       
-                      {isActivated ? (
+                      {(userData?.purchasedProducts && userData.purchasedProducts.length > 0) ? (
                         <div className="flex-1 overflow-y-auto max-h-[250px] space-y-3 pr-2 custom-scrollbar">
-                          {/* Item 1 */}
-                          <div className="w-full flex items-center justify-between p-3 rounded-lg bg-zinc-800/50 border border-zinc-700/50 hover:border-blue-500/30 transition">
-                            <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-400">
-                                <Shield className="w-5 h-5" />
-                              </div>
-                              <div>
-                                <h4 className="font-bold text-white text-sm">Ban Content Automation</h4>
-                                <p className="text-xs text-zinc-400 mt-0.5">HSD: Vĩnh viễn</p>
-                              </div>
-                            </div>
-                            <span className="px-2 py-1 text-[10px] font-bold bg-green-500/20 text-green-400 rounded-full">
-                              Active
-                            </span>
-                          </div>
-                          
-                          {/* Item 2 */}
-                          <div className="w-full flex items-center justify-between p-3 rounded-lg bg-zinc-800/50 border border-zinc-700/50 hover:border-purple-500/30 transition">
-                            <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center text-purple-400">
-                                <BookOpen className="w-5 h-5" />
-                              </div>
-                              <div>
-                                <h4 className="font-bold text-white text-sm">Khóa học Master Automation</h4>
-                                <p className="text-xs text-zinc-400 mt-0.5">HSD: Trọn đời</p>
-                              </div>
-                            </div>
-                            <span className="px-2 py-1 text-[10px] font-bold bg-green-500/20 text-green-400 rounded-full">
-                              Active
-                            </span>
-                          </div>
+                          {userData.purchasedProducts.map((purchase, index) => {
+                            const product = allProducts.find(p => p.id === purchase.id);
+                            if (!product) return null;
+                            const Icon = product.icon || Shield;
+                            
+                            let isActive = true;
+                            let expiredText = "Vĩnh viễn";
+                            if (purchase.expiresAt) {
+                              const expiryDate = new Date(purchase.expiresAt);
+                              if (expiryDate < new Date()) {
+                                isActive = false;
+                              }
+                              expiredText = expiryDate.toLocaleDateString('vi-VN');
+                            }
 
-                          {/* Item 3 */}
-                          <div className="w-full flex items-center justify-between p-3 rounded-lg bg-zinc-800/50 border border-zinc-700/50 hover:border-pink-500/30 transition">
-                            <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-lg bg-pink-500/20 flex items-center justify-center text-pink-400">
-                                <Hammer className="w-5 h-5" />
+                            return (
+                              <div key={`${purchase.id}-${index}`} className="w-full flex items-center justify-between p-3 rounded-lg bg-zinc-800/50 border border-zinc-700/50 hover:border-blue-500/30 transition">
+                                <div className="flex items-center gap-4">
+                                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center bg-gradient-to-br ${product.themeClasses.gradientFrom} via-transparent to-transparent opacity-80 ${product.themeClasses.text}`}>
+                                    <Icon className="w-5 h-5" />
+                                  </div>
+                                  <div>
+                                    <h4 className="font-bold text-white text-sm">{product.name}</h4>
+                                    <p className="text-xs text-zinc-400 mt-0.5">HSD: {expiredText}</p>
+                                  </div>
+                                </div>
+                                {isActive ? (
+                                  <span className="px-2 py-1 text-[10px] font-bold bg-green-500/20 text-green-400 rounded-full">
+                                    Active
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-1 text-[10px] font-bold bg-zinc-800 text-zinc-500 rounded-full">
+                                    Expired
+                                  </span>
+                                )}
                               </div>
-                              <div>
-                                <h4 className="font-bold text-white text-sm">Healing Bird Tool</h4>
-                                <p className="text-xs text-zinc-400 mt-0.5">HSD: 30/12/2026</p>
-                              </div>
-                            </div>
-                            <span className="px-2 py-1 text-[10px] font-bold bg-green-500/20 text-green-400 rounded-full">
-                              Active
-                            </span>
-                          </div>
-
-                          {/* Item 4 */}
-                          <div className="w-full flex items-center justify-between p-3 rounded-lg bg-zinc-800/50 border border-zinc-700/50 hover:border-orange-500/30 transition">
-                            <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-400">
-                                <GitMerge className="w-5 h-5" />
-                              </div>
-                              <div>
-                                <h4 className="font-bold text-white text-sm">Quy trình Đăng Reels</h4>
-                                <p className="text-xs text-zinc-400 mt-0.5">HSD: Vĩnh viễn</p>
-                              </div>
-                            </div>
-                            <span className="px-2 py-1 text-[10px] font-bold bg-green-500/20 text-green-400 rounded-full">
-                              Active
-                            </span>
-                          </div>
-
-                          {/* Item 5 */}
-                          <div className="w-full flex items-center justify-between p-3 rounded-lg bg-zinc-800/50 border border-zinc-700/50 hover:border-blue-500/30 transition">
-                            <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-lg bg-zinc-700/50 flex items-center justify-center text-zinc-400">
-                                <Shield className="w-5 h-5" />
-                              </div>
-                              <div>
-                                <h4 className="font-bold text-zinc-400 text-sm">Tool Seeding Pro (Hết hạn)</h4>
-                                <p className="text-xs text-zinc-500 mt-0.5">HSD: 01/01/2024</p>
-                              </div>
-                            </div>
-                            <span className="px-2 py-1 text-[10px] font-bold bg-zinc-800 text-zinc-500 rounded-full">
-                              Expired
-                            </span>
-                          </div>
-
+                            );
+                          })}
                         </div>
                       ) : (
                         <div className="flex-1 flex items-center justify-center">
@@ -677,16 +636,28 @@ function HubContent() {
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-2">
                     {/* Left Column: Nạp tiền */}
                     <div className="space-y-6">
-                      <h3 className="text-lg font-bold text-white mb-2">Hướng dẫn nạp tiền</h3>
+                      <h3 className="text-lg font-bold text-white mb-2">Nạp Tiền Vào Ví</h3>
                       
-                      {/* Step 1 */}
-                      <div className="flex items-center gap-3 p-3 bg-[#1A1025]/50 border border-[#3A2266]/50 rounded-lg">
-                        <div className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs font-bold flex items-center justify-center shadow-[0_0_10px_rgba(59,130,246,0.5)]">1</div>
-                        <span className="text-sm text-zinc-300 font-medium">Chọn số tiền</span>
+                      {/* Bảng nhắc nhở giá (Remind Banner) */}
+                      <div className="bg-gradient-to-r from-neonPurple/10 to-blue-500/10 border border-neonPurple/30 rounded-xl p-4">
+                        <h4 className="text-sm font-bold text-neonPurple mb-2 flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4" /> Bảng Giá Tham Khảo (Nâng cấp Gói)
+                        </h4>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="bg-black/40 border border-[#3A2266]/50 rounded-lg p-3 text-center">
+                            <p className="text-xs font-bold text-white">Gói VIP</p>
+                            <p className="text-sm font-bold text-blue-400 mt-1">499.000đ</p>
+                          </div>
+                          <div className="bg-black/40 border border-[#3A2266]/50 rounded-lg p-3 text-center">
+                            <p className="text-xs font-bold text-white">Gói Ultimate</p>
+                            <p className="text-sm font-bold text-neonPurple mt-1">999.000đ</p>
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-zinc-400 mt-2 italic text-center">Nhập đúng số tiền để mua gói tương ứng</p>
                       </div>
 
-                      {/* Step 1.5 - Text Label */}
-                      <div className="flex items-center gap-3">
+                      {/* Step 1 - Text Label */}
+                      <div className="flex items-center gap-3 mt-4">
                         <div className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs font-bold flex items-center justify-center shadow-[0_0_10px_rgba(59,130,246,0.5)]">1</div>
                         <span className="text-sm text-zinc-300 font-medium">Chọn Số Tiền Cần Nạp</span>
                       </div>

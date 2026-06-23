@@ -216,7 +216,7 @@ export default function AdminOrdersAndTransactions() {
                       <div className="max-w-xs space-y-1">
                         {order.items.map((item, idx) => (
                           <div key={idx} className="text-zinc-200">
-                            • {item.name} <span className="text-zinc-500 font-mono text-xs">({Number(item.price).toLocaleString()}đ)</span>
+                            • {item.name} <span className="text-zinc-500 font-mono text-xs">({typeof item.price === 'number' ? `${item.price.toLocaleString()}đ` : item.price})</span>
                           </div>
                         ))}
                       </div>

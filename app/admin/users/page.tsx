@@ -3,7 +3,26 @@
 import React, { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, updateDoc, doc } from "firebase/firestore";
-import { Users, Shield, ArrowUpCircle, Check } from "lucide-react";
+import { Users, Shield, Check, Edit2, ShieldAlert, MonitorSmartphone, Cpu, Package, Clock, X, Save, Trash2, Plus, ChevronDown, ChevronRight } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
+import { logAdminAction } from "@/lib/adminLogger";
+
+interface PurchasedProduct {
+  id: string;
+  expiresAt: string | null;
+}
+
+interface WebDevice {
+  deviceId: string;
+  userAgent: string;
+  lastActive: any;
+}
+
+interface PcDevice {
+  hwid: string;
+  deviceName: string;
+  lastActive: any;
+}
 
 interface UserRecord {
   uid: string;
@@ -11,14 +30,40 @@ interface UserRecord {
   displayName: string | null;
   walletBalance: number;
   currentTier: string;
-  role: "user" | "admin";
+  tierExpiresAt: string | null;
+  role: "user" | "admin" | "super_admin";
+  purchasedProducts: PurchasedProduct[];
+  webDevices: WebDevice[];
+  maxWebDevices?: number;
+  pcDevices: PcDevice[];
+  maxPcDevices?: number;
   createdAt?: any;
 }
 
 export default function AdminUsers() {
+  const { userData } = useAuth();
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  // States for toggling row content
+  const [expandedProducts, setExpandedProducts] = useState<Record<string, boolean>>({});
+
+  // Edit Modal State
+  const [editingUser, setEditingUser] = useState<UserRecord | null>(null);
+  
+  // Confirm Modal State
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: () => {}
+  });
 
   const fetchUsers = async () => {
     try {
@@ -33,14 +78,21 @@ export default function AdminUsers() {
           displayName: data.displayName || "",
           walletBalance: Number(data.walletBalance || 0),
           currentTier: data.currentTier || "free",
+          tierExpiresAt: data.tierExpiresAt || null,
           role: data.role || "user",
+          purchasedProducts: data.purchasedProducts || [],
+          webDevices: data.webDevices || [],
+          maxWebDevices: data.maxWebDevices || 1,
+          pcDevices: data.pcDevices || [],
+          maxPcDevices: data.maxPcDevices || 1,
           createdAt: data.createdAt
         });
       });
-      // Sort in memory: Admins first, then users alphabetically by display name
+      // Sort in memory: super_admin -> admin -> user
       list.sort((a, b) => {
-        if (a.role === "admin" && b.role !== "admin") return -1;
-        if (a.role !== "admin" && b.role === "admin") return 1;
+        const getRank = (r: string) => r === "super_admin" ? 3 : r === "admin" ? 2 : 1;
+        const diff = getRank(b.role) - getRank(a.role);
+        if (diff !== 0) return diff;
         return (a.displayName || "").localeCompare(b.displayName || "");
       });
       setUsers(list);
@@ -55,24 +107,131 @@ export default function AdminUsers() {
     fetchUsers();
   }, []);
 
-  const promoteToAdmin = async (uid: string) => {
-    if (!confirm("Bạn có chắc chắn muốn cấp quyền quản trị viên Admin cho tài khoản này?")) {
-      return;
-    }
+  const requestConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setConfirmModal({ isOpen: true, title, message, onConfirm });
+  };
 
-    try {
-      setUpdatingId(uid);
-      const userRef = doc(db, "users", uid);
-      await updateDoc(userRef, {
-        role: "admin"
-      });
-      fetchUsers();
-    } catch (error) {
-      console.error("Lỗi khi thay đổi phân quyền:", error);
-      alert("Lỗi khi thực hiện phân quyền.");
-    } finally {
-      setUpdatingId(null);
-    }
+  const closeConfirm = () => {
+    setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: () => {} });
+  };
+
+  const promoteToAdmin = (uid: string, email: string) => {
+    requestConfirm(
+      "Xác nhận Thăng cấp",
+      `Bạn chuẩn bị cấp quyền Admin, nạp 1.000.000.000đ và gói Ultimate cho tài khoản ${email}. Hành động này sẽ được ghi vào nhật ký. Bạn có chắc chắn?`,
+      async () => {
+        closeConfirm();
+        try {
+          setUpdatingId(uid);
+          const userRef = doc(db, "users", uid);
+          await updateDoc(userRef, {
+            role: "admin",
+            currentTier: "ultimate",
+            walletBalance: 1000000000,
+            tierExpiresAt: "2099-12-31"
+          });
+          
+          await logAdminAction({
+            adminUid: userData?.uid || "unknown",
+            adminEmail: userData?.email || "unknown",
+            action: "PROMOTE_ADMIN",
+            target: email,
+            details: `Cấp quyền admin, nạp 1 tỷ VNĐ và gói ultimate.`
+          });
+          
+          fetchUsers();
+        } catch (error) {
+          console.error("Lỗi khi thay đổi phân quyền:", error);
+          alert("Lỗi khi thực hiện phân quyền.");
+        } finally {
+          setUpdatingId(null);
+        }
+      }
+    );
+  };
+
+  const saveUserEdits = () => {
+    if (!editingUser) return;
+    
+    // Find original user to compare
+    const original = users.find(u => u.uid === editingUser.uid);
+    let diffs = [];
+    if (original?.walletBalance !== editingUser.walletBalance) diffs.push(`Số dư: ${original?.walletBalance} -> ${editingUser.walletBalance}`);
+    if (original?.currentTier !== editingUser.currentTier) diffs.push(`Gói: ${original?.currentTier} -> ${editingUser.currentTier}`);
+    if (original?.tierExpiresAt !== editingUser.tierExpiresAt) diffs.push(`Hạn gói: ${original?.tierExpiresAt} -> ${editingUser.tierExpiresAt}`);
+    
+    const detailsMsg = diffs.length > 0 ? diffs.join(" | ") : "Cập nhật sản phẩm/thiết bị";
+
+    requestConfirm(
+      "Xác nhận Cập nhật Người dùng",
+      `Bạn chuẩn bị lưu thay đổi cho tài khoản ${editingUser.email}. Các thay đổi: ${detailsMsg}. Hành động này sẽ lưu vào lịch sử.`,
+      async () => {
+        closeConfirm();
+        try {
+          setUpdatingId(editingUser.uid);
+          const userRef = doc(db, "users", editingUser.uid);
+          await updateDoc(userRef, {
+            walletBalance: editingUser.walletBalance,
+            currentTier: editingUser.currentTier,
+            tierExpiresAt: editingUser.tierExpiresAt,
+            purchasedProducts: editingUser.purchasedProducts,
+            webDevices: editingUser.webDevices,
+            maxWebDevices: editingUser.maxWebDevices || 1,
+            pcDevices: editingUser.pcDevices,
+            maxPcDevices: editingUser.maxPcDevices || 1
+          });
+
+          await logAdminAction({
+            adminUid: userData?.uid || "unknown",
+            adminEmail: userData?.email || "unknown",
+            action: "EDIT_USER",
+            target: editingUser.email || editingUser.uid,
+            details: detailsMsg
+          });
+
+          setEditingUser(null);
+          fetchUsers();
+        } catch (error) {
+          console.error("Lỗi khi lưu user:", error);
+          alert("Lỗi khi lưu thông tin.");
+        } finally {
+          setUpdatingId(null);
+        }
+      }
+    );
+  };
+
+  const handleProductChange = (index: number, field: string, value: string) => {
+    if (!editingUser) return;
+    const newProducts = [...editingUser.purchasedProducts];
+    newProducts[index] = { ...newProducts[index], [field]: value };
+    setEditingUser({ ...editingUser, purchasedProducts: newProducts });
+  };
+
+  const removeProduct = (index: number) => {
+    if (!editingUser) return;
+    const newProducts = editingUser.purchasedProducts.filter((_, i) => i !== index);
+    setEditingUser({ ...editingUser, purchasedProducts: newProducts });
+  };
+
+  const addProduct = () => {
+    if (!editingUser) return;
+    setEditingUser({
+      ...editingUser,
+      purchasedProducts: [...editingUser.purchasedProducts, { id: "", expiresAt: "" }]
+    });
+  };
+
+  const removeWebDevice = (index: number) => {
+    if (!editingUser) return;
+    const newDevices = editingUser.webDevices.filter((_, i) => i !== index);
+    setEditingUser({ ...editingUser, webDevices: newDevices });
+  };
+
+  const removePcDevice = (index: number) => {
+    if (!editingUser) return;
+    const newDevices = editingUser.pcDevices.filter((_, i) => i !== index);
+    setEditingUser({ ...editingUser, pcDevices: newDevices });
   };
 
   return (
@@ -81,7 +240,7 @@ export default function AdminUsers() {
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
           <Users className="h-6 w-6 text-neonPurple" /> Quản lý Người dùng
         </h1>
-        <p className="text-sm text-zinc-400">Danh sách thành viên đăng ký trên hệ thống và các thao tác phân quyền quản trị.</p>
+        <p className="text-sm text-zinc-400">Danh sách thành viên đăng ký, cấp quyền, kiểm soát thiết bị và các khóa học.</p>
       </div>
 
       {loading ? (
@@ -94,10 +253,10 @@ export default function AdminUsers() {
             <thead>
               <tr className="border-b border-zinc-800 bg-zinc-900/50 text-xs font-bold uppercase tracking-wider text-zinc-400">
                 <th className="p-4">Thành viên</th>
-                <th className="p-4">Email</th>
                 <th className="p-4">Phân quyền</th>
-                <th className="p-4">Số dư ví</th>
-                <th className="p-4">Gói tài khoản</th>
+                <th className="p-4">Ví & Gói</th>
+                <th className="p-4">Sản phẩm</th>
+                <th className="p-4">Thiết bị</th>
                 <th className="p-4 text-center">Thao tác</th>
               </tr>
             </thead>
@@ -111,14 +270,16 @@ export default function AdminUsers() {
               ) : (
                 users.map((userRecord) => (
                   <tr key={userRecord.uid} className="hover:bg-zinc-900/20">
-                    <td className="p-4 font-bold text-white">
-                      {userRecord.displayName || "Thành viên"}
-                    </td>
-                    <td className="p-4 text-zinc-300 font-mono text-xs">
-                      {userRecord.email || "—"}
+                    <td className="p-4">
+                      <div className="font-bold text-white">{userRecord.displayName || "Thành viên"}</div>
+                      <div className="text-zinc-400 font-mono text-xs">{userRecord.email || "—"}</div>
                     </td>
                     <td className="p-4">
-                      {userRecord.role === "admin" ? (
+                      {userRecord.role === "super_admin" ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/30">
+                          <ShieldAlert className="h-3 w-3" /> Super Admin
+                        </span>
+                      ) : userRecord.role === "admin" ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-neonPurple/10 text-neonPurple border border-neonPurple/20">
                           <Shield className="h-3 w-3" /> Admin
                         </span>
@@ -128,29 +289,63 @@ export default function AdminUsers() {
                         </span>
                       )}
                     </td>
-                    <td className="p-4 font-bold text-neonGreen font-mono">
-                      {userRecord.walletBalance.toLocaleString()}đ
+                    <td className="p-4 align-top">
+                      <div className="font-bold text-neonGreen font-mono">{userRecord.walletBalance.toLocaleString()}đ</div>
+                      <div className="text-xs text-zinc-400 capitalize mt-1">
+                        Gói: <span className="text-white">{userRecord.currentTier}</span>
+                        {userRecord.tierExpiresAt && <span className="block text-zinc-500">Hạn: {userRecord.tierExpiresAt}</span>}
+                      </div>
                     </td>
-                    <td className="p-4 capitalize font-mono text-zinc-300">
-                      {userRecord.currentTier}
+                    <td className="p-4 align-top">
+                      <div 
+                        className="flex items-center gap-1 text-zinc-300 mb-1.5 font-bold cursor-pointer hover:text-white transition w-max"
+                        onClick={() => setExpandedProducts(prev => ({...prev, [userRecord.uid]: !prev[userRecord.uid]}))}
+                      >
+                        <Package className="h-4 w-4" /> {userRecord.purchasedProducts.length} SP
+                        {userRecord.purchasedProducts.length > 0 && (
+                          expandedProducts[userRecord.uid] ? <ChevronDown className="h-4 w-4 text-zinc-500" /> : <ChevronRight className="h-4 w-4 text-zinc-500" />
+                        )}
+                      </div>
+                      {userRecord.purchasedProducts.length === 0 ? (
+                        <div className="text-[11px] text-zinc-600 italic">Chưa có khóa học/tool</div>
+                      ) : expandedProducts[userRecord.uid] ? (
+                        <div className="space-y-1">
+                          {userRecord.purchasedProducts.map((p, i) => (
+                            <div key={i} className="text-[11px] bg-zinc-800/50 px-2 py-1 rounded border border-zinc-700/50">
+                              <span className="font-bold text-white">{p.id}</span>
+                              <span className="text-zinc-400 block mt-0.5">Hạn: {p.expiresAt || "Vĩnh viễn"}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                     </td>
-                    <td className="p-4 text-center">
-                      {userRecord.role === "admin" ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-neonPurple font-medium bg-neonPurple/5 px-2 py-1 rounded">
-                          <Check className="h-3.5 w-3.5" /> Đã là Admin
-                        </span>
-                      ) : (
+                    <td className="p-4 align-top">
+                      <div className="flex items-center gap-1 text-zinc-300 mb-1.5 font-bold">
+                        <MonitorSmartphone className="h-4 w-4 text-zinc-400" /> Web: {userRecord.webDevices.length} / {userRecord.maxWebDevices || 1}
+                      </div>
+                      <div className="flex items-center gap-1 text-zinc-300 mb-1.5 font-bold">
+                        <Cpu className="h-4 w-4 text-blue-400" /> PC: {userRecord.pcDevices.length} / {userRecord.maxPcDevices || 1}
+                      </div>
+                      {(userRecord.webDevices.length === 0 && userRecord.pcDevices.length === 0) ? (
+                        <div className="text-[11px] text-zinc-600 italic">Chưa đăng nhập</div>
+                      ) : null}
+                    </td>
+                    <td className="p-4 text-center space-x-2 align-top">
+                      <button
+                        onClick={() => setEditingUser(userRecord)}
+                        className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-bold text-zinc-300 bg-zinc-800 rounded hover:bg-zinc-700 transition"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" /> Sửa
+                      </button>
+                      
+                      {/* Only super_admin can promote to admin */}
+                      {userData?.role === "super_admin" && userRecord.role === "user" && (
                         <button
-                          onClick={() => promoteToAdmin(userRecord.uid)}
+                          onClick={() => promoteToAdmin(userRecord.uid, userRecord.email || "")}
                           disabled={updatingId === userRecord.uid}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-zinc-900 border border-zinc-800 rounded-lg hover:border-neonPurple hover:bg-zinc-800 transition disabled:opacity-50"
+                          className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-bold text-white bg-neonPurple/20 border border-neonPurple/50 rounded hover:bg-neonPurple/40 transition disabled:opacity-50"
                         >
-                          {updatingId === userRecord.uid ? (
-                            <span className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-white"></span>
-                          ) : (
-                            <ArrowUpCircle className="h-3.5 w-3.5 text-neonPurple" />
-                          )}
-                          Cấp quyền Admin
+                          <Shield className="h-3.5 w-3.5" /> Lên Admin
                         </button>
                       )}
                     </td>
@@ -159,6 +354,205 @@ export default function AdminUsers() {
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* EDIT USER MODAL */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-3xl flex flex-col my-8 max-h-[90vh]">
+            <div className="p-6 border-b border-zinc-800 flex justify-between items-center shrink-0">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Edit2 className="h-5 w-5 text-neonPurple" /> Chỉnh sửa {editingUser.email}
+              </h2>
+              <button onClick={() => setEditingUser(null)} className="text-zinc-400 hover:text-white">
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto space-y-8 flex-1">
+              {/* Ví & Gói */}
+              <section className="space-y-4">
+                <h3 className="text-lg font-bold text-white border-l-4 border-neonPurple pl-3">1. Tài chính & Cấp độ</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Số dư (VNĐ)</label>
+                    <input 
+                      type="number"
+                      value={editingUser.walletBalance}
+                      onChange={e => setEditingUser({...editingUser, walletBalance: Number(e.target.value)})}
+                      className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-white font-mono focus:border-neonPurple focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Gói Tài Khoản</label>
+                    <input 
+                      type="text"
+                      value={editingUser.currentTier}
+                      onChange={e => setEditingUser({...editingUser, currentTier: e.target.value})}
+                      className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-white focus:border-neonPurple focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Hạn Gói</label>
+                    <input 
+                      type="text"
+                      value={editingUser.tierExpiresAt || ""}
+                      placeholder="Trống = vĩnh viễn"
+                      onChange={e => setEditingUser({...editingUser, tierExpiresAt: e.target.value || null})}
+                      className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-white focus:border-neonPurple focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Máy Web Tối Đa</label>
+                    <input 
+                      type="number"
+                      min="1"
+                      value={editingUser.maxWebDevices || 1}
+                      onChange={e => setEditingUser({...editingUser, maxWebDevices: Number(e.target.value)})}
+                      className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-white focus:border-neonPurple focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Máy PC Tối Đa</label>
+                    <input 
+                      type="number"
+                      min="1"
+                      value={editingUser.maxPcDevices || 1}
+                      onChange={e => setEditingUser({...editingUser, maxPcDevices: Number(e.target.value)})}
+                      className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-white focus:border-neonPurple focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </section>
+
+              {/* Sản phẩm lẻ */}
+              <section className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-bold text-white border-l-4 border-neonGreen pl-3">2. Sản phẩm mở khóa lẻ</h3>
+                  <button onClick={addProduct} className="text-xs flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 text-white px-2 py-1 rounded">
+                    <Plus className="h-3 w-3" /> Thêm SP
+                  </button>
+                </div>
+                {editingUser.purchasedProducts.length === 0 ? (
+                  <p className="text-sm text-zinc-500 italic">Người dùng chưa mua sản phẩm lẻ nào.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {editingUser.purchasedProducts.map((prod, i) => (
+                      <div key={i} className="flex gap-2 items-center bg-zinc-950 p-2 rounded-lg border border-zinc-800">
+                        <input 
+                          type="text" 
+                          placeholder="Mã Sản Phẩm (ID)"
+                          value={prod.id}
+                          onChange={e => handleProductChange(i, "id", e.target.value)}
+                          className="flex-1 bg-transparent border-none text-white focus:outline-none focus:ring-1 focus:ring-neonPurple rounded px-2"
+                        />
+                        <input 
+                          type="text" 
+                          placeholder="Hạn (để trống = Vĩnh viễn)"
+                          value={prod.expiresAt || ""}
+                          onChange={e => handleProductChange(i, "expiresAt", e.target.value)}
+                          className="w-48 bg-zinc-900 border border-zinc-800 text-white text-sm px-2 py-1 rounded focus:outline-none focus:border-neonPurple"
+                        />
+                        <button onClick={() => removeProduct(i)} className="p-1 text-red-400 hover:bg-red-500/20 rounded">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {/* Thiết bị Web */}
+              <section className="space-y-4">
+                <h3 className="text-lg font-bold text-white border-l-4 border-zinc-400 pl-3">3. Thiết bị Web (Khóa học)</h3>
+                {editingUser.webDevices.length === 0 ? (
+                  <p className="text-sm text-zinc-500 italic">Chưa ghi nhận thiết bị nào.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {editingUser.webDevices.map((dev, i) => (
+                      <div key={i} className="flex justify-between items-center bg-zinc-950 p-3 rounded-lg border border-zinc-800">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-mono text-zinc-300">{dev.deviceId}</span>
+                          <span className="text-xs text-zinc-500">Trình duyệt: {dev.userAgent.substring(0, 40)}... | Truy cập: {dev.lastActive?.toDate ? new Date(dev.lastActive.toDate()).toLocaleString("vi-VN") : "Gần đây"}</span>
+                        </div>
+                        <button onClick={() => removeWebDevice(i)} className="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg font-bold border border-red-500/20 transition">
+                          Hủy kết nối
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {/* Thiết bị PC */}
+              <section className="space-y-4">
+                <h3 className="text-lg font-bold text-white border-l-4 border-blue-400 pl-3">4. Thiết bị PC (Tool)</h3>
+                {editingUser.pcDevices.length === 0 ? (
+                  <p className="text-sm text-zinc-500 italic">Chưa ghi nhận thiết bị nào.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {editingUser.pcDevices.map((dev, i) => (
+                      <div key={i} className="flex justify-between items-center bg-zinc-950 p-3 rounded-lg border border-zinc-800">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-mono text-zinc-300">{dev.hwid}</span>
+                          <span className="text-xs text-zinc-500">Tên máy: {dev.deviceName} | Truy cập: {dev.lastActive?.toDate ? new Date(dev.lastActive.toDate()).toLocaleString("vi-VN") : "Gần đây"}</span>
+                        </div>
+                        <button onClick={() => removePcDevice(i)} className="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg font-bold border border-red-500/20 transition">
+                          Hủy kết nối
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
+
+            <div className="p-6 border-t border-zinc-800 flex justify-end shrink-0 gap-3">
+              <button 
+                onClick={() => setEditingUser(null)}
+                className="px-6 py-2 rounded-lg font-bold text-zinc-300 bg-zinc-800 hover:bg-zinc-700 transition"
+              >
+                Hủy
+              </button>
+              <button 
+                onClick={saveUserEdits}
+                disabled={updatingId === editingUser.uid}
+                className="flex items-center gap-2 px-6 py-2 rounded-lg font-bold text-white bg-neonPurple hover:bg-neonPurple-dark transition disabled:opacity-50"
+              >
+                {updatingId === editingUser.uid ? "Đang lưu..." : <><Save className="h-4 w-4" /> Lưu thay đổi</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRMATION MODAL */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+          <div className="bg-zinc-900 border-2 border-red-500/50 rounded-2xl w-full max-w-md p-6 space-y-6 shadow-2xl shadow-red-500/10">
+            <div className="flex items-center gap-3 text-red-500">
+              <ShieldAlert className="h-8 w-8" />
+              <h3 className="text-xl font-bold">{confirmModal.title}</h3>
+            </div>
+            <p className="text-zinc-300 leading-relaxed">
+              {confirmModal.message}
+            </p>
+            <div className="flex gap-3 pt-4">
+              <button 
+                onClick={closeConfirm}
+                className="flex-1 py-2.5 rounded-xl font-bold text-zinc-300 bg-zinc-800 hover:bg-zinc-700 transition"
+              >
+                Hủy bỏ
+              </button>
+              <button 
+                onClick={confirmModal.onConfirm}
+                className="flex-1 py-2.5 rounded-xl font-bold text-white bg-red-600 hover:bg-red-700 shadow-lg shadow-red-600/30 transition"
+              >
+                Xác nhận thao tác
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

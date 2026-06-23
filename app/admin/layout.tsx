@@ -15,7 +15,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (!loading) {
       if (!user) {
         router.push("/login?redirect=/admin");
-      } else if (userData && userData.role !== "admin") {
+      } else if (userData && userData.role !== "admin" && userData.role !== "super_admin") {
         router.push("/");
       }
     }
@@ -34,7 +34,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   // Not logged in or not admin - return blank during redirection
-  if (!user || (userData && userData.role !== "admin")) {
+  if (!user || (userData && userData.role !== "admin" && userData.role !== "super_admin")) {
     return null;
   }
 

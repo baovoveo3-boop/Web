@@ -2,12 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Menu, X, ShoppingCart, Heart, Globe, LogOut } from 'lucide-react';
-import { COMBOS, TOOLS, COURSES, FREE_RESOURCES } from '@/data/store';
+
 import { useCart } from '@/app/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
 
 export default function Header() {
+  const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const { cartItems, setIsCartOpen } = useCart();
   const { user, userData, logout } = useAuth();
@@ -62,12 +64,14 @@ export default function Header() {
   return (
     <header data-testid="header" className="sticky top-0 z-50 w-full flex flex-col">
       {/* Top Banner (Flash Sale) */}
-      <div className="bg-red-600 px-4 py-2 text-center text-sm font-medium text-white flex items-center justify-center gap-2">
-        <span>🔥 Ưu đãi sốc — hàng trăm tool & workflow đang giảm giá</span>
-        <Link href={user ? "/hub?tab=wallet" : "/login?redirect=/hub?tab=wallet"} className="font-bold underline hover:text-red-200 transition">
-          Nạp ngay →
-        </Link>
-      </div>
+      {pathname === '/' && (
+        <div className="bg-red-600 px-4 py-2 text-center text-sm font-medium text-white flex items-center justify-center gap-2">
+          <span>🔥 Ưu đãi sốc — hàng trăm tool & workflow đang giảm giá</span>
+          <Link href={user ? "/hub?tab=wallet" : "/login?redirect=/hub?tab=wallet"} className="font-bold underline hover:text-red-200 transition">
+            Nạp ngay →
+          </Link>
+        </div>
+      )}
 
       {/* Main Navigation */}
       <div className="w-full border-b border-zinc-800 bg-zinc-950/90 backdrop-blur-md">
@@ -116,7 +120,7 @@ export default function Header() {
             
             {user ? (
               <div className="flex items-center gap-4 ml-2">
-                {userData?.role === "admin" && (
+                {(userData?.role === "admin" || userData?.role === "super_admin") && (
                   <Link href="/admin" className="text-sm font-semibold text-zinc-300 hover:text-white transition mr-1">
                     Admin Panel
                   </Link>
@@ -181,7 +185,7 @@ export default function Header() {
                   <span className="text-zinc-300 font-medium">Chào, {userData?.displayName || user.email?.split('@')[0]}</span>
                   <span className="text-neonPurple text-sm font-bold">{userData?.walletBalance?.toLocaleString()}đ</span>
                 </div>
-                {userData?.role === "admin" && (
+                {(userData?.role === "admin" || userData?.role === "super_admin") && (
                   <Link href="/admin" className="text-sm font-bold text-center text-zinc-300 hover:text-white py-2 border border-zinc-800 rounded-lg" onClick={() => setIsOpen(false)}>
                     Admin Panel
                   </Link>

@@ -1,32 +1,54 @@
 import { notFound } from 'next/navigation';
-import { TOOLS } from '@/data/tools';
+import { db } from '@/lib/firebase';
+import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 import ToolDetailClient from '@/components/ToolDetailClient';
 import { Metadata } from 'next';
 
 export async function generateStaticParams() {
-  return TOOLS.map((tool) => ({
-    id: tool.id,
-  }));
+  const querySnapshot = await getDocs(collection(db, "products"));
+  const paths: { id: string }[] = [];
+  querySnapshot.forEach((doc) => {
+    paths.push({ id: doc.id });
+  });
+  return paths;
 }
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
-  const tool = TOOLS.find((t) => t.id === params.id);
-  if (!tool) {
-    return {
-      title: 'Tool Not Found',
-    };
+  const docRef = doc(db, "products", params.id);
+  const docSnap = await getDoc(docRef);
+  if (!docSnap.exists()) {
+    return { title: 'Sản phẩm không tồn tại' };
   }
-  return {
-    title: `${tool.titlePrefix} ${tool.titleHighlight}`,
-  };
+  const data = docSnap.data();
+  return { title: data.name };
 }
 
-export default function ToolDetailPage({ params }: { params: { id: string } }) {
-  const tool = TOOLS.find((t) => t.id === params.id);
+export default async function ToolDetailPage({ params }: { params: { id: string } }) {
+  const docRef = doc(db, "products", params.id);
+  const docSnap = await getDoc(docRef);
 
-  if (!tool) {
+  if (!docSnap.exists()) {
     notFound();
   }
 
-  return <ToolDetailClient tool={tool} />;
+  const data = docSnap.data();
+  
+  const product = {
+    id: docSnap.id,
+    name: data.name || "",
+    tag: data.badgeText || (data.category === 'tool' ? "CÔNG CỤ" : "SẢN PHẨM"),
+    titlePrefix: data.name?.split(' ')[0] || "",
+    titleHighlight: data.name?.split(' ').slice(1).join(' ') || "",
+    description: data.description || "",
+    price: data.price ? `${Number(data.price).toLocaleString()}đ` : "Miễn phí",
+    image: data.imageUrl || "/software-box.jpg",
+    gallery: data.gallery || [],
+    features: [], 
+    theme: "from-neonPurple to-neonGreen",
+    glow: "bg-neonPurple/20",
+    howToUse: [], 
+    faq: data.faqs || []
+  };
+
+  return <ToolDetailClient tool={product as any} />;
 }
