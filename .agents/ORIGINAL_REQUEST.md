@@ -154,3 +154,68 @@ Khi dữ liệu Firebase trả về danh sách Khóa học (Courses) hoặc Côn
 - [ ] Khối Khóa học và Công cụ hiển thị dải 3-4 hộp "Sắp ra mắt" with thiết kế nguyên bản (có viền lấp lánh, ngôi sao lấp lánh).
 - [ ] Không làm phá vỡ cấu trúc Responsive của giao diện hiện tại.
 
+## Follow-up — 2026-06-25T09:13:52Z
+
+Cập nhật giao diện Admin Panel và cấu trúc Database để hỗ trợ tải và cập nhật Tool tự động cho Desktop App.
+
+Working directory: E:\Youtube\Ban Content\Web
+Integrity mode: development
+
+## Requirements
+
+### R1. Nâng cấp giao diện Admin Panel (app/admin/products/page.tsx)
+Thêm một section "Cấu hình Desktop App" trong form thêm/sửa sản phẩm tại trang Admin. Phần này chỉ hiện ra (hoặc có hiệu lực) đối với các sản phẩm có danh mục là `tool`. Cần bổ sung các Input:
+- `exec_file`: Input Text
+- `version`: Input Text
+- `download_url`: Input Text (dành cho link Google Drive)
+- `force_update`: Toggle Switch (On/Off)
+
+### R2. Tự động chuyển đổi Link Google Drive
+Khi Sếp dán link Google Drive chia sẻ thông thường (dạng `https://drive.google.com/file/d/ID/view`) vào ô `download_url`, trước khi lưu xuống Firestore, hệ thống Web phải tự động bóc tách ID và chuyển nó thành link tải trực tiếp (Direct Download): `https://drive.google.com/uc?export=download&id=ID`.
+
+### R3. Cập nhật logic lưu Database
+Cập nhật hàm xử lý việc tạo/chỉnh sửa sản phẩm để đảm bảo 4 trường mới này được lưu trữ thành công vào bảng `products` trên Firestore.
+
+## Acceptance Criteria
+
+### Giao diện Admin & Xử lý Link
+- [ ] Giao diện form tạo/sửa sản phẩm hiển thị đầy đủ 4 trường mới (exec_file, version, download_url, force_update).
+- [ ] Khi nhập thử link `https://drive.google.com/file/d/12345abcde/view` và bấm Lưu, hệ thống Firestore sẽ ghi nhận `download_url` là `https://drive.google.com/uc?export=download&id=12345abcde`.
+
+### Lưu trữ Database
+- [ ] Truy xuất thử Database sau khi lưu: sản phẩm phải có đủ các trường `exec_file`, `version`, `download_url`, và `force_update` (đúng kiểu dữ liệu bool).
+
+## Follow-up — 2026-06-26T02:14:07Z
+
+Xây dựng trang Quản lý Cấu hình Hệ thống (System Settings) trong Admin để lưu trữ thông tin App Launcher. Xây dựng một trang Download công khai chuyên biệt để người dùng tải Launcher. Đồng thời, nâng cấp tính năng kéo thả & tự động sinh Bước 1 trong trang Quản lý Sản phẩm Admin.
+
+Working directory: E:\Youtube\Ban Content\Web
+Integrity mode: development
+
+## Requirements
+
+### R1. Trang Quản lý Hệ thống (Admin System Settings)
+- Tạo một tab/trang mới trong khu vực Admin (ví dụ: `app/admin/settings/page.tsx`).
+- Cho phép Admin nhập các thông số của App Launcher: `Version`, `Download Link`, và cờ `Force Update` (Bắt buộc cập nhật).
+- Lưu trữ các thông tin này vào Firestore, collection `settings`, document `general`.
+
+### R2. Nâng cấp Form Quản lý Sản phẩm (Admin Products)
+- Trong phần khai báo "Cách sử dụng" (How to Use) và "Tính năng", bổ sung thêm 2 nút **Mũi tên Lên (Up)** và **Mũi tên Xuống (Down)** để Admin dễ dàng thay đổi thứ tự các bước.
+- Khi nhấn nút "Thêm sản phẩm" (Tạo mới), hệ thống tự động gọi database để lấy `Download Link` của App Launcher từ collection `settings`. Sau đó, tự động điền sẵn nội dung Bước 1 của "Cách sử dụng" với câu: `Cài đặt App Launcher để tải và quản lý các tool. Link tải: [LINK]`.
+
+### R3. Trang Download Công Khai
+- Xây dựng trang `app/download/page.tsx` với thiết kế UI tối giản, hiện đại và đẹp mắt.
+- Trang này cần đọc dữ liệu `Download Link` từ database và có một nút "Tải App Launcher cho PC" nổi bật.
+- Cập nhật thanh Menu chính (Navbar) của Website: thêm một tab "Download" trỏ về trang này.
+
+## Acceptance Criteria
+
+### Verification & Testing
+- [ ] Mở trang Admin Settings: Có thể nhập, lưu thành công và tải lại (refresh) thông tin App Launcher vẫn giữ nguyên cấu hình mới nhất từ Firebase.
+- [ ] Form Sản phẩm: Bấm nút Lên/Xuống ở mảng "Cách sử dụng" sẽ đảo vị trí nội dung ngay lập tức mà không làm mất chữ.
+- [ ] Form Sản phẩm (Tạo mới): Bước 1 tự động xuất hiện với nội dung chính xác kèm Link tải đã cấu hình ở trang Settings.
+- [ ] Trang Download Public: Giao diện hiển thị tốt, khi click vào nút Tải Xuống, nó phải sử dụng đúng đường link lấy từ Firebase.
+- [ ] Navbar: Có mục "Download" và điều hướng chính xác.
+
+
+

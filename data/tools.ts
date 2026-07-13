@@ -24,6 +24,7 @@ export interface ToolData {
   glow: string;
   howToUse: string[];
   faq: FAQItem[];
+  allow_trial?: boolean;
 }
 
 export const TOOLS: ToolData[] = [

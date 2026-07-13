@@ -93,6 +93,18 @@ async function setupMocks(page, userObj, dbState) {
     window.mock_getAuth = () => ({ mock: true });
     window.mock_getStorage = () => ({ mock: true });
 
+    const originalFetch = window.fetch;
+    window.fetch = async function(input, init) {
+      const url = typeof input === 'string' ? input : input.url;
+      if (url.includes('api.imgbb.com')) {
+        return new Response(JSON.stringify({
+          success: true,
+          data: { url: 'https://example.com/mock-uploaded-image.png' }
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch.apply(this, arguments);
+    };
+
     // State Seeding
     window.mockDbState = JSON.parse(JSON.stringify(db)) || {
       users: {},
@@ -413,8 +425,15 @@ test.describe('Admin Dashboard E2E Test Suite', () => {
       await page.fill('textarea[placeholder="Chi tiết sản phẩm..."]', 'Mô tả tính năng gói Bạch Kim mới tinh');
       await page.fill('input[placeholder="Ví dụ: 150000"]', '500000');
 
+      await page.setInputFiles('input[type="file"][accept="image/*"]:not([multiple])', {
+        name: 'test.png',
+        mimeType: 'image/png',
+        buffer: Buffer.from('mock-image-content'),
+      });
+
       // Trigger Save
-      await page.click('button:has-text("Lưu lại")');
+      await page.click('button[type="submit"]');
+      await page.click('button:has-text("Xác nhận thao tác")');
 
       // Product should now be visible in list
       await expect(page.locator('h3:has-text("Gói Bạch Kim")')).toBeVisible();
@@ -434,7 +453,8 @@ test.describe('Admin Dashboard E2E Test Suite', () => {
       await page.fill('input[placeholder="Ví dụ: 150000"]', '180000');
 
       // Save
-      await page.click('button:has-text("Lưu lại")');
+      await page.click('button[type="submit"]');
+      await page.click('button:has-text("Xác nhận thao tác")');
 
       // Verify edits
       await expect(page.locator('h3:has-text("Gói Quét Vàng - Cải tiến")')).toBeVisible();
@@ -447,12 +467,71 @@ test.describe('Admin Dashboard E2E Test Suite', () => {
       
       const card = page.locator('.rounded-xl', { hasText: 'Gói Quét Vàng' });
       await card.locator('button[title="Xóa"]').click();
+      await page.click('button:has-text("Xác nhận thao tác")');
 
       // Wait for deletion update and verify product list is updated
       await expect(async () => {
         const countAfter = await page.locator('.rounded-xl:has(h3)').count();
         expect(countAfter).toBe(countBefore - 1);
       }).toPass();
+    });
+
+    test('Supports adding a tool product with Desktop App configuration and Google Drive link conversion', async ({ page }) => {
+      await page.click('button:has-text("Thêm sản phẩm")');
+
+      // Wait for Modal to open
+      await expect(page.locator('h2:has-text("Thêm sản phẩm mới")')).toBeVisible();
+
+      // Category section is visible, but Desktop App section is not
+      await expect(page.locator('text=Cấu hình Desktop App')).not.toBeVisible();
+
+      // Select category "tool"
+      await page.fill('input[placeholder="VD: tool, course..."]', 'tool');
+
+      // Desktop App section should now be visible
+      await expect(page.locator('text=Cấu hình Desktop App')).toBeVisible();
+
+      // Fill basic details
+      await page.fill('input[placeholder="Nhập tên sản phẩm..."]', 'Tool Auto Post');
+      await page.fill('textarea[placeholder="Chi tiết sản phẩm..."]', 'Tool tự động đăng bài chuyên nghiệp');
+      await page.fill('input[placeholder="Ví dụ: 150000"]', '250000');
+
+      // Fill Desktop App configuration
+      await page.fill('input[placeholder="VD: app.exe"]', 'autopost.exe');
+      await page.fill('input[placeholder="VD: 1.0.0"]', '1.0.5');
+      await page.fill('input[placeholder="Nhập link Google Drive..."]', 'https://drive.google.com/file/d/12345abcde/view');
+
+      // Toggle force_update
+      await page.click('button:has(span.bg-white)');
+
+      await page.setInputFiles('input[type="file"][accept="image/*"]:not([multiple])', {
+        name: 'test.png',
+        mimeType: 'image/png',
+        buffer: Buffer.from('mock-image-content'),
+      });
+
+      // Trigger Save
+      await page.click('button[type="submit"]');
+      await page.click('button:has-text("Xác nhận thao tác")');
+
+      // Verify it is added to the list
+      await expect(page.locator('h3:has-text("Tool Auto Post")')).toBeVisible();
+      await expect(page.locator('text=250.000đ')).toBeVisible();
+
+      // Verify data in the mocked database state (url conversion and types)
+      const data = await page.evaluate(() => {
+        return window.mockDbState['products'];
+      });
+      
+      const productKeys = Object.keys(data);
+      const toolProductKey = productKeys.find(key => key.includes('tool-auto-post'));
+      expect(toolProductKey).toBeDefined();
+      
+      const savedProduct = data[toolProductKey!];
+      expect(savedProduct.exec_file).toBe('autopost.exe');
+      expect(savedProduct.version).toBe('1.0.5');
+      expect(savedProduct.download_url).toBe('https://drive.google.com/uc?export=download&id=12345abcde');
+      expect(savedProduct.force_update).toBe(true);
     });
 
   });
@@ -491,32 +570,29 @@ test.describe('Admin Dashboard E2E Test Suite', () => {
         uid: 'admin1',
         email: 'admin@test.com'
       };
-      await setupMocks(page, adminUser, mockDbData);
+      const customDbData = JSON.parse(JSON.stringify(mockDbData));
+      customDbData.users['admin1'].role = 'super_admin';
+      await setupMocks(page, adminUser, customDbData);
       await page.goto('/admin/users');
-
-      // Handle promote confirmation prompt
-      page.on('dialog', async dialog => {
-        expect(dialog.message()).toContain('Cấp quyền quản trị viên Admin');
-        await dialog.accept();
-      });
 
       // Verify users list renders
       await expect(page.locator('td:has-text("Normal User")')).toBeVisible();
       await expect(page.locator('td:has-text("System Admin")')).toBeVisible();
 
-      // Check Normal User is standard member and has active "Cấp quyền Admin" action
+      // Check Normal User is standard member and has active "Lên Admin" action
       const userRow = page.locator('tr:has-text("Normal User")');
       await expect(userRow.locator('text=Thành viên')).toBeVisible();
       
-      const promoteBtn = userRow.locator('button:has-text("Cấp quyền Admin")');
+      const promoteBtn = userRow.locator('button:has-text("Lên Admin")');
       await expect(promoteBtn).toBeVisible();
 
       // Trigger promotion
       await promoteBtn.click();
+      await page.click('button:has-text("Xác nhận thao tác")');
 
       // Verify Normal User row has updated to Admin
       await expect(userRow.locator('text=Admin')).toBeVisible();
-      await expect(userRow.locator('text=Đã là Admin')).toBeVisible();
+      await expect(userRow.locator('button:has-text("Lên Admin")')).not.toBeVisible();
     });
 
   });

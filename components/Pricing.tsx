@@ -6,6 +6,7 @@ import Link from 'next/link';
 export default function Pricing() {
   const [activeCategory, setActiveCategory] = useState<'subscription' | 'retail'>('subscription');
   const [retailBilling, setRetailBilling] = useState<'monthly' | 'lifetime'>('monthly');
+  const [isYearly, setIsYearly] = useState(false);
 
   return (
     <section 
@@ -24,7 +25,7 @@ export default function Pricing() {
 
       {/* Main Category Toggle */}
       <div className="mt-10 flex justify-center">
-        <div className="bg-zinc-900/50 p-1.5 rounded-2xl flex gap-1 border border-zinc-800">
+        <div className="bg-zinc-900/50 p-1.5 rounded-2xl flex flex-col sm:flex-row gap-1 border border-zinc-800 w-full max-w-[90%] sm:w-auto">
           <button
             onClick={() => setActiveCategory('subscription')}
             className={`px-6 py-2.5 rounded-xl text-sm font-semibold transition-all ${
@@ -48,15 +49,32 @@ export default function Pricing() {
         </div>
       </div>
 
+      {/* Billing Toggle for Subscriptions */}
+      {activeCategory === 'subscription' && (
+        <div className="mt-8 flex justify-center items-center gap-4">
+          <span className={`text-sm font-medium ${!isYearly ? 'text-white' : 'text-zinc-500'}`}>Thanh toán hàng tháng</span>
+          <button
+            onClick={() => setIsYearly(!isYearly)}
+            data-testid="pricing-toggle"
+            className="relative inline-flex h-7 w-14 items-center rounded-full bg-zinc-800 border border-zinc-700 transition-colors focus:outline-none"
+          >
+            <span className={`${isYearly ? 'translate-x-8 bg-purple-500' : 'translate-x-1 bg-zinc-500'} inline-block h-5 w-5 transform rounded-full transition-all`} />
+          </button>
+          <span className={`text-sm font-medium ${isYearly ? 'text-white' : 'text-zinc-500'}`}>
+            Thanh toán hàng năm <span className="ml-1.5 rounded-md bg-purple-500/20 px-2 py-0.5 text-[10px] text-purple-400 font-bold uppercase tracking-wide">Tiết kiệm 20%</span>
+          </span>
+        </div>
+      )}
+
       {activeCategory === 'subscription' ? (
         <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
           {/* Free Plan */}
-          <div className="flex flex-col justify-between rounded-3xl border border-zinc-800 bg-zinc-900/40 p-8 shadow-sm hover:border-zinc-700 transition-colors">
+          <div data-testid="pricing-card-free" className="flex flex-col justify-between rounded-3xl border border-zinc-800 bg-zinc-900/40 p-8 shadow-sm hover:border-zinc-700 transition-colors">
             <div>
               <h3 className="text-xl font-bold text-zinc-300">Dùng Thử</h3>
               <p className="mt-4 text-zinc-400 text-sm h-10">Trải nghiệm cơ bản để làm quen với hệ thống.</p>
               <div className="mt-6 flex items-baseline">
-                <span className="text-4xl font-extrabold text-white">0đ</span>
+                <span data-testid="price-value-free" className="text-4xl font-extrabold text-white">0đ</span>
               </div>
               <ul className="mt-8 space-y-4 text-sm text-zinc-300">
                 <li className="flex items-center gap-2"><span className="text-zinc-500">✅</span> Truy cập tất cả Công cụ cơ bản, Kho Ứng Dụng Miễn Phí</li>
@@ -66,19 +84,26 @@ export default function Pricing() {
                 <li className="flex items-center gap-2 text-zinc-500"><span className="text-red-900/50">❌</span> Không ưu tiên hỗ trợ</li>
               </ul>
             </div>
-            <Link href="/login" className="mt-8 block w-full rounded-xl bg-zinc-800 py-3 text-center text-sm font-semibold text-white hover:bg-zinc-700 transition">
+            <Link href="/hub?plan=free&billing=monthly" data-testid="pricing-select-free" className="mt-8 block w-full rounded-xl bg-zinc-800 py-3 text-center text-sm font-semibold text-white hover:bg-zinc-700 transition">
               Bắt đầu miễn phí
             </Link>
           </div>
 
-          {/* Plus Plan */}
-          <div className="flex flex-col justify-between rounded-3xl border border-blue-500/30 bg-blue-900/10 p-8 shadow-sm relative hover:border-blue-500/50 transition-colors">
+          {/* Plus Plan (VIP) */}
+          <div data-testid="pricing-card-vip" className="flex flex-col justify-between rounded-3xl border border-blue-500/30 bg-blue-900/10 p-8 shadow-sm relative hover:border-blue-500/50 transition-colors">
+            <div data-testid="pricing-vip-badge" className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 px-4 py-1 text-xs font-bold uppercase tracking-wider text-white shadow-lg">
+              Phổ Biến
+            </div>
             <div>
               <h3 className="text-xl font-bold text-blue-400">Plus (Chuyên Gia)</h3>
               <p className="mt-4 text-zinc-400 text-sm h-10">Công cụ chuyên sâu dành cho Content Creator.</p>
               <div className="mt-6 flex items-baseline">
-                <span className="text-4xl font-extrabold text-white">699K</span>
-                <span className="ml-1 text-xl font-semibold text-zinc-500">/tháng</span>
+                <span data-testid="price-value-vip" className="text-4xl font-extrabold text-white">
+                  {isYearly ? '5.99M' : '699K'}
+                </span>
+                <span className="ml-1 text-xl font-semibold text-zinc-500">
+                  {isYearly ? '/năm' : '/tháng'}
+                </span>
               </div>
               <ul className="mt-8 space-y-4 text-sm text-zinc-300">
                 <li className="flex items-center gap-2"><span className="text-blue-500">✅</span> Truy cập toàn bộ Công cụ (gồm VIP Tools)</li>
@@ -88,13 +113,13 @@ export default function Pricing() {
                 <li className="flex items-center gap-2"><span className="text-blue-500">✅</span> Hỗ trợ qua Kênh Email / Ticket</li>
               </ul>
             </div>
-            <Link href="/hub?plan=plus" className="mt-8 block w-full rounded-xl bg-blue-600/20 border border-blue-500/50 py-3 text-center text-sm font-semibold text-blue-400 hover:bg-blue-600 hover:text-white transition">
-              Đăng ký Gói Plus
+            <Link href={isYearly ? "/hub?plan=vip&billing=yearly" : "/hub?plan=vip&billing=monthly"} data-testid="pricing-select-vip" className="mt-8 block w-full rounded-xl bg-blue-600/20 border border-blue-500/50 py-3 text-center text-sm font-semibold text-blue-400 hover:bg-blue-600 hover:text-white transition">
+              Đăng ký Gói VIP
             </Link>
           </div>
 
-          {/* Premium Plan */}
-          <div className="relative flex flex-col justify-between rounded-3xl border-2 border-purple-500 bg-[#1e1e24] p-8 shadow-[0_0_40px_rgba(168,85,247,0.2)]">
+          {/* Premium Plan (Ultimate) */}
+          <div data-testid="pricing-card-ultimate" className="relative flex flex-col justify-between rounded-3xl border-2 border-purple-500 bg-[#1e1e24] p-8 shadow-[0_0_40px_rgba(168,85,247,0.2)]">
             <div className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 px-4 py-1 text-xs font-bold uppercase tracking-wider text-white shadow-lg">
               Khuyên Dùng
             </div>
@@ -102,8 +127,12 @@ export default function Pricing() {
               <h3 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">Premium (Vượt Trội)</h3>
               <p className="mt-4 text-zinc-300 text-sm h-10">Giải pháp toàn diện cho Studio & Doanh nghiệp.</p>
               <div className="mt-6 flex items-baseline">
-                <span className="text-4xl font-extrabold text-white">1.99M</span>
-                <span className="ml-1 text-xl font-semibold text-zinc-500">/tháng</span>
+                <span data-testid="price-value-ultimate" className="text-4xl font-extrabold text-white">
+                  {isYearly ? '15.99M' : '1.99M'}
+                </span>
+                <span className="ml-1 text-xl font-semibold text-zinc-500">
+                  {isYearly ? '/năm' : '/tháng'}
+                </span>
               </div>
               <ul className="mt-8 space-y-4 text-sm text-zinc-300">
                 <li className="flex items-center gap-2"><span className="text-purple-500">✅</span> KHÔNG GIỚI HẠN số Tool</li>
@@ -113,8 +142,8 @@ export default function Pricing() {
                 <li className="flex items-center gap-2"><span className="text-purple-500">✅</span> Yêu cầu thêm tính năng (Request Feature)</li>
               </ul>
             </div>
-            <Link href="/hub?plan=premium" className="mt-8 block w-full rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 py-3 text-center text-sm font-bold text-white hover:opacity-90 transition shadow-lg shadow-purple-500/25">
-              Nâng cấp Premium
+            <Link href={isYearly ? "/hub?plan=ultimate&billing=yearly" : "/hub?plan=ultimate&billing=monthly"} data-testid="pricing-select-ultimate" className="mt-8 block w-full rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 py-3 text-center text-sm font-bold text-white hover:opacity-90 transition shadow-lg shadow-purple-500/25">
+              Nâng cấp Ultimate
             </Link>
           </div>
         </div>

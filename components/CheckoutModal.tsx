@@ -137,24 +137,68 @@ export default function CheckoutModal({ isOpen, onClose, items, onSuccess }: Che
                 </div>
               )}
 
-              <button 
-                onClick={handleCheckout}
-                disabled={!hasEnoughBalance || isProcessing}
-                className={`w-full py-3.5 rounded-xl font-bold text-base transition flex items-center justify-center gap-2
-                  ${!hasEnoughBalance 
-                    ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
-                    : 'bg-gradient-to-r from-neonPurple to-neonPurple-dark hover:from-purple-500 hover:to-neonPurple text-white shadow-[0_0_20px_rgba(168,85,247,0.3)]'
-                  }`}
-              >
-                {isProcessing ? (
-                  <span className="flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    Đang xử lý...
-                  </span>
-                ) : (
-                  <>Xác nhận thanh toán <ArrowRight className="w-4 h-4" /></>
-                )}
-              </button>
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={handleCheckout}
+                  disabled={!hasEnoughBalance || isProcessing}
+                  className={`w-full py-3.5 rounded-xl font-bold text-base transition flex items-center justify-center gap-2
+                    ${!hasEnoughBalance 
+                      ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
+                      : 'bg-gradient-to-r from-neonPurple to-neonPurple-dark hover:from-purple-500 hover:to-neonPurple text-white shadow-[0_0_20px_rgba(168,85,247,0.3)]'
+                    }`}
+                >
+                  {isProcessing ? (
+                    <span className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      Đang xử lý...
+                    </span>
+                  ) : (
+                    <>Thanh toán bằng Số Dư Ví <ArrowRight className="w-4 h-4" /></>
+                  )}
+                </button>
+
+                <div className="relative flex items-center py-2">
+                  <div className="flex-grow border-t border-zinc-800"></div>
+                  <span className="flex-shrink-0 mx-4 text-zinc-500 text-sm font-medium">HOẶC</span>
+                  <div className="flex-grow border-t border-zinc-800"></div>
+                </div>
+
+                <button 
+                  onClick={async () => {
+                    if (!user) return;
+                    setIsProcessing(true);
+                    try {
+                      const res = await fetch('/api/payment/create-link', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          amount: totalAmount,
+                          description: `Thanh toan don hang BTAI`,
+                          userId: user.uid,
+                          userEmail: user.email,
+                          type: 'direct_purchase',
+                          toolIds: items.map(i => i.id)
+                        })
+                      });
+                      const data = await res.json();
+                      if (data.checkoutUrl) {
+                        window.location.href = data.checkoutUrl;
+                      } else {
+                        alert("Lỗi tạo mã thanh toán: " + (data.error || 'Unknown Error'));
+                      }
+                    } catch (error) {
+                      console.error(error);
+                      alert("Lỗi kết nối máy chủ");
+                    } finally {
+                      setIsProcessing(false);
+                    }
+                  }}
+                  disabled={isProcessing}
+                  className="w-full py-3.5 rounded-xl font-bold text-base transition flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700"
+                >
+                  ⚡ Mua Trực Tiếp (PayOS)
+                </button>
+              </div>
             </div>
           </>
         )}

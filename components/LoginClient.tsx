@@ -1,13 +1,18 @@
 "use client";
 
-import { useState } from "react";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Mail, Lock, User as UserIcon, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { UserData } from "@/context/AuthContext";
+
+const isValidPort = (port: string | null) => {
+  if (!port) return false;
+  return /^\d+$/.test(port) && parseInt(port) >= 1 && parseInt(port) <= 65535;
+};
 
 export default function LoginClient() {
   const [isLogin, setIsLogin] = useState(true);
@@ -17,6 +22,52 @@ export default function LoginClient() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isDesktopAuth = searchParams.get('desktop_auth') === 'true';
+  const desktopPort = searchParams.get('port');
+  
+  const ssoAttemptedRef = useRef(false);
+
+  const handleSSORedirect = useCallback(async (user: User) => {
+    if (isDesktopAuth && isValidPort(desktopPort)) {
+      if (ssoAttemptedRef.current) {
+        return true; // Already redirecting / handled
+      }
+      ssoAttemptedRef.current = true;
+      try {
+        const idToken = await user.getIdToken();
+        const res = await fetch('/api/desktop-auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken })
+        });
+        const data = await res.json();
+        if (data.success && data.customToken) {
+          window.location.href = `http://localhost:${desktopPort}/callback?token=${data.customToken}`;
+          return true;
+        } else {
+          console.error("SSO Error:", data.error);
+          setError("Lỗi liên kết SSO: " + (data.error || "Không rõ nguyên nhân"));
+        }
+      } catch (err: any) {
+        console.error("Failed to generate custom token for SSO", err);
+        setError("Lỗi liên kết SSO: " + (err.message || "Lỗi kết nối"));
+      }
+    }
+    return false;
+  }, [isDesktopAuth, desktopPort]);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser && isDesktopAuth && isValidPort(desktopPort) && !ssoAttemptedRef.current) {
+        setLoading(true);
+        handleSSORedirect(currentUser).finally(() => {
+          setLoading(false);
+        });
+      }
+    });
+    return () => unsubscribe();
+  }, [isDesktopAuth, desktopPort, handleSSORedirect]);
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,8 +76,11 @@ export default function LoginClient() {
 
     try {
       if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
-        router.push("/");
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        const isRedirecting = await handleSSORedirect(userCredential.user);
+        if (!isRedirecting) {
+          router.push("/");
+        }
       } else {
         if (!name.trim()) throw new Error("Vui lòng nhập tên hiển thị");
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -45,7 +99,11 @@ export default function LoginClient() {
           createdAt: serverTimestamp(),
         };
         await setDoc(userDocRef, newUserData);
-        router.push("/");
+
+        const isRedirecting = await handleSSORedirect(user);
+        if (!isRedirecting) {
+          router.push("/");
+        }
       }
     } catch (err: any) {
       console.error(err);
@@ -64,8 +122,11 @@ export default function LoginClient() {
     const provider = new GoogleAuthProvider();
     try {
       // AuthContext sẽ tự động handle việc tạo document cho Google User mới
-      await signInWithPopup(auth, provider);
-      router.push("/");
+      const userCredential = await signInWithPopup(auth, provider);
+      const isRedirecting = await handleSSORedirect(userCredential.user);
+      if (!isRedirecting) {
+        router.push("/");
+      }
     } catch (err: any) {
       console.error(err);
       setError("Đăng nhập bằng Google thất bại.");
@@ -169,6 +230,12 @@ export default function LoginClient() {
                 />
               </div>
             </div>
+
+            {isDesktopAuth && isValidPort(desktopPort) && loading && !error && (
+              <div className="text-blue-400 text-sm bg-blue-400/10 p-3 rounded-lg border border-blue-400/20 flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" /> Đang chuyển hướng liên kết SSO...
+              </div>
+            )}
 
             {error && <div className="text-red-400 text-sm bg-red-400/10 p-3 rounded-lg border border-red-400/20">{error}</div>}
 

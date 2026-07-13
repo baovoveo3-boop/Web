@@ -113,7 +113,7 @@ function ComingSoonCard({
         </span>
         
         {/* Placeholder Title */}
-        <div className="h-6 w-3/4 bg-zinc-800/50 rounded-md mb-4"></div>
+        <div data-testid="coming-soon-title" className="h-6 w-3/4 bg-zinc-800/50 rounded-md mb-4"></div>
         
         {/* Placeholder Description */}
         <div className="space-y-2">
@@ -207,23 +207,25 @@ export default function Home() {
                 <div className="lg:col-span-7 relative rounded-2xl overflow-hidden border border-[#3A2266]/50 bg-zinc-900/50 backdrop-blur-sm group shadow-xl">
                   <div className={`absolute inset-0 bg-gradient-to-br ${product.glow} to-transparent z-0 transition-colors duration-500`}></div>
                   
-                  <div className="relative z-10 p-6 md:p-10 h-full flex flex-col md:flex-row items-center gap-8">
+                  <div className="relative z-10 p-6 md:p-10 h-full flex flex-col lg:flex-row items-center gap-8">
                     
                     {/* Phần chữ bên trái */}
                     <div className="w-full lg:w-[55%] flex flex-col justify-center relative z-20">
                       <span className="bg-orange-500 text-white text-xs font-bold px-3 py-1 rounded-full w-fit mb-4 uppercase tracking-wider shadow-lg transition-all duration-300">
                         {product.tag}
                       </span>
-                      <h1 className="text-3xl md:text-5xl font-extrabold text-white mb-2 leading-tight">
+                      <h1 data-testid="hero-heading" className="text-3xl md:text-5xl font-extrabold text-white mb-2 leading-tight">
                         {product.titlePrefix} <br/>
                         <span className={`text-transparent bg-clip-text bg-gradient-to-r ${product.theme} transition-all duration-500`}>
                           {product.titleHighlight}
                         </span>
                       </h1>
-                      <p className="text-zinc-400 mb-6 text-sm md:text-base leading-relaxed max-w-md min-h-[60px]">
+                      <p data-testid="hero-subtitle" className="text-zinc-400 mb-6 text-sm md:text-base leading-relaxed max-w-md min-h-[60px]">
                         {product.description}
                       </p>
                       
+
+
                       <ul className="space-y-3 mb-8 min-h-[140px] pr-4">
                         {product.features.map((feature, idx) => (
                           <li key={idx} className="flex items-start gap-3 text-sm text-zinc-300">
@@ -353,7 +355,7 @@ export default function Home() {
             {/* 3. TRUST INDICATORS (Nền đen trong suốt) */}
             <section className="py-12 bg-[#0B0510]/50 backdrop-blur-md border-b border-[#3A2266]/50/50">
               <div className="max-w-7xl mx-auto px-4 md:px-8">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-8 divide-x divide-zinc-800/50">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-8 divide-y md:divide-y-0 md:divide-x divide-zinc-800/50">
                   <div className="flex flex-col items-center text-center px-4">
                     <div className="w-12 h-12 rounded-full bg-neonPurple/20 text-neonPurple flex items-center justify-center mb-4 backdrop-blur-md">
                       <Settings className="w-6 h-6" />
@@ -837,19 +839,12 @@ export default function Home() {
 <div className="w-full">
 <div className="flex items-center justify-between mt-auto px-6 pb-6">
                             <div className="flex gap-2 w-full mt-auto">
-                              <button 
-                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCheckoutItem(item); }}
-                                className={`flex-1 bg-[#3A2266] ${item.themeClasses.bgHover} ${item.themeClasses.textHoverWhite ? 'hover:text-white' : 'hover:text-zinc-950'} text-zinc-300 px-4 py-2 rounded-lg text-sm font-bold transition`}
+                              <Link 
+                                href={`/free/${item.id}`}
+                                className={`flex-1 text-center bg-[#3A2266] ${item.themeClasses.bgHover} ${item.themeClasses.textHoverWhite ? 'hover:text-white' : 'hover:text-zinc-950'} text-zinc-300 px-4 py-2 rounded-lg text-sm font-bold transition`}
                               >
                                 {item.actionText}
-                              </button>
-                              <button 
-                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); addToCart(item); alert('Đã thêm vào giỏ hàng!'); }}
-                                className={`w-10 h-10 shrink-0 flex items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800 text-zinc-400 hover:text-white hover:border-white/50 transition`}
-                                title="Thêm vào giỏ"
-                              >
-                                <ShoppingCart className="w-4 h-4" />
-                              </button>
+                              </Link>
                             </div>
                           </div>
                         </div>

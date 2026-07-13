@@ -21,22 +21,26 @@ function HubContent() {
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { user, userData, loading } = useAuth();
-  const { allProducts } = useStoreProducts();
+  const { user, userData, logout, loading } = useAuth();
+  const { allProducts, courses, tools } = useStoreProducts();
+
+  const purchasedIds = userData?.purchasedProducts?.map(p => p.id) || [];
+  const purchasedCoursesCount = courses.filter(c => purchasedIds.includes(c.id)).length;
+  const purchasedToolsCount = tools.filter(t => purchasedIds.includes(t.id)).length;
   
   // Format account tier display text
   let tierText = userData?.currentTier ? userData.currentTier.charAt(0).toUpperCase() + userData.currentTier.slice(1) : 'Free';
-  let isVip = userData?.currentTier === 'vip' || plan === 'vip';
+  let isPlus = userData?.currentTier === 'plus' || plan === 'plus';
   let isUltimate = userData?.currentTier === 'ultimate' || plan === 'ultimate';
   
-  if (plan === 'vip') {
-    tierText = billing === 'yearly' ? 'VIP (Yearly)' : 'VIP (Monthly)';
+  if (plan === 'plus') {
+    tierText = billing === 'yearly' ? 'Plus (Yearly)' : 'Plus (Monthly)';
   } else if (plan === 'ultimate') {
     tierText = billing === 'yearly' ? 'Ultimate (Yearly)' : 'Ultimate (Monthly)';
   }
 
   // Active status state
-  const isActivated = isVip || isUltimate;
+  const isActivated = isPlus || isUltimate;
 
   // Checkbox states (green ticks when active)
   const [deepScan, setDeepScan] = useState(true);
@@ -114,7 +118,7 @@ function HubContent() {
 
   useEffect(() => {
     if (!isActivated) {
-      setLogs(prev => [...prev, "[WARNING] Chế độ Khách: Một số tính năng bị khóa. Hãy mua gói VIP/Ultimate để mở khóa."]);
+      setLogs(prev => [...prev, "[WARNING] Chế độ Khách: Một số tính năng bị khóa. Hãy mua gói Plus/Ultimate để mở khóa."]);
       return;
     }
     setLogs(prev => [...prev, `[SUCCESS] Đã kết nối gói dịch vụ: ${tierText}`]);
@@ -132,7 +136,7 @@ function HubContent() {
   }, [isActivated, tierText]);
 
   const TABS = [
-    { id: 'overview', label: 'Tổng quan', icon: LayoutDashboard },
+    { id: 'overview', label: 'Tổng quan', icon: LayoutDashboard, testId: 'sidebar-link-overview' },
     { id: 'license', label: 'Quản lý Ứng dụng', icon: Key },
     { id: 'wallet', label: 'Ví điện tử', icon: Wallet },
     { id: 'history', label: 'Lịch sử giao dịch', icon: History },
@@ -181,6 +185,7 @@ function HubContent() {
                 type="button"
                 className="md:hidden p-1 rounded-lg text-zinc-400 hover:text-white"
                 onClick={() => setSidebarOpen(false)}
+                aria-label="Close sidebar"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -197,6 +202,7 @@ function HubContent() {
                       setActiveTab(tab.id);
                       setSidebarOpen(false);
                     }}
+                    data-testid={tab.testId}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-200 ${
                       isActive 
                         ? 'bg-gradient-to-r from-neonPurple/20 to-transparent text-white border-l-2 border-neonPurple' 
@@ -212,7 +218,7 @@ function HubContent() {
           </div>
 
           <div className="space-y-4">
-            <div className="p-3 rounded-xl bg-gradient-to-br from-zinc-900 to-zinc-800 border border-zinc-700 shadow-inner">
+            <div data-testid="hub-user-profile" className="p-3 rounded-xl bg-gradient-to-br from-zinc-900 to-zinc-800 border border-zinc-700 shadow-inner">
               <div className="flex items-center gap-3 mb-3">
                 <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-neonPurple to-blue-500 flex items-center justify-center text-white shadow-[0_0_10px_rgba(168,85,247,0.4)]">
                   <User className="h-5 w-5" />
@@ -228,13 +234,17 @@ function HubContent() {
               </div>
             </div>
 
-            <Link
-              href="/login"
+            <button
+              onClick={async () => {
+                await logout();
+                window.location.href = "/";
+              }}
+              data-testid="hub-logout-btn"
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-955/20 transition w-full text-left font-medium"
             >
               <LogOut className="h-4 w-4" />
               Đăng xuất
-            </Link>
+            </button>
           </div>
         </aside>
 
@@ -248,6 +258,7 @@ function HubContent() {
                   type="button"
                   className="md:hidden p-2 rounded-lg bg-zinc-800/80 text-zinc-300 hover:text-white backdrop-blur"
                   onClick={() => setSidebarOpen(true)}
+                  aria-label="Open sidebar"
                 >
                   <Menu className="h-6 w-6" />
                 </button>
@@ -277,7 +288,7 @@ function HubContent() {
                     <div className="rounded-xl border border-blue-500/30 bg-zinc-900/50 backdrop-blur p-6 hover:border-blue-500/50 transition flex justify-between items-center group shadow-lg">
                       <div>
                         <p className="text-sm font-medium text-zinc-400 mb-2">Số dư ví</p>
-                        <h3 className="text-3xl font-bold text-white group-hover:text-blue-400 transition">{userData?.walletBalance?.toLocaleString() || 0}<span className="text-xl text-zinc-500">₫</span></h3>
+                        <h3 data-testid="stat-wallet-balance" className="text-3xl font-bold text-white group-hover:text-blue-400 transition">{userData?.walletBalance?.toLocaleString() || 0}₫</h3>
                       </div>
                       <span className="p-3 rounded-xl bg-blue-500/20 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.2)]">
                         <Wallet className="h-6 w-6" />
@@ -287,7 +298,7 @@ function HubContent() {
                     <div className="rounded-xl border border-purple-500/30 bg-zinc-900/50 backdrop-blur p-6 hover:border-purple-500/50 transition flex justify-between items-center group shadow-lg">
                       <div>
                         <p className="text-sm font-medium text-zinc-400 mb-2">Khóa học đã mua</p>
-                        <h3 className="text-3xl font-bold text-white group-hover:text-purple-400 transition">{userData?.purchasedProducts?.length || 0}</h3>
+                        <h3 data-testid="stat-courses" className="text-3xl font-bold text-white group-hover:text-purple-400 transition">{purchasedCoursesCount}</h3>
                       </div>
                       <span className="p-3 rounded-xl bg-purple-500/20 text-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.2)]">
                         <BookOpen className="h-6 w-6" />
@@ -297,7 +308,7 @@ function HubContent() {
                     <div className="rounded-xl border border-pink-500/30 bg-zinc-900/50 backdrop-blur p-6 hover:border-pink-500/50 transition flex justify-between items-center group shadow-lg">
                       <div>
                         <p className="text-sm font-medium text-zinc-400 mb-2">Công cụ đã mua</p>
-                        <h3 className="text-3xl font-bold text-white group-hover:text-pink-400 transition">{userData?.purchasedProducts?.length || 0}</h3>
+                        <h3 data-testid="stat-tools" className="text-3xl font-bold text-white group-hover:text-pink-400 transition">{purchasedToolsCount}</h3>
                       </div>
                       <span className="p-3 rounded-xl bg-pink-500/20 text-pink-400 shadow-[0_0_15px_rgba(236,72,153,0.2)]">
                         <Hammer className="h-6 w-6" />
@@ -307,7 +318,7 @@ function HubContent() {
                     <div className="rounded-xl border border-neonGreen/30 bg-gradient-to-br from-neonGreen/20 to-[#1A1025] backdrop-blur p-6 hover:border-neonGreen/50 transition flex justify-between items-center group shadow-lg">
                       <div>
                         <p className="text-sm font-medium text-zinc-400 mb-2">Account Tier</p>
-                        <h3 className="text-xl font-bold text-neonGreen mt-2">{tierText}</h3>
+                        <h3 data-testid="stat-account-tier" className="text-xl font-bold text-neonGreen mt-2">{tierText}</h3>
                       </div>
                       <span className="p-3 rounded-xl bg-neonGreen/20 text-neonGreen shadow-[0_0_15px_rgba(34,197,94,0.2)]">
                         <User className="h-6 w-6" />
@@ -461,7 +472,7 @@ function HubContent() {
                         <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 to-transparent z-10"></div>
                         <img src="/software-box.jpg" alt="Ban Content" className="w-full h-full object-cover opacity-50 group-hover:scale-110 transition duration-700" />
                         <div className="absolute top-3 right-3 z-20">
-                          {isVip || isUltimate ? (
+                          {isPlus || isUltimate ? (
                             <span className="px-2.5 py-1 text-xs font-bold bg-neonGreen/20 text-neonGreen border border-neonGreen/30 rounded-full flex items-center gap-1 shadow-[0_0_10px_rgba(34,197,94,0.3)]">
                               <Shield className="w-3 h-3" /> Active
                             </span>
@@ -475,8 +486,8 @@ function HubContent() {
                       <div className="p-5">
                         <h3 className="font-bold text-lg text-white mb-1">Ban Content Automation</h3>
                         <p className="text-zinc-400 text-sm mb-4">Phiên bản All-in-one v3.0 bảo vệ kênh YouTube.</p>
-                        <button className={`w-full py-2.5 rounded-lg font-bold text-sm transition ${isVip || isUltimate ? 'bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700' : 'bg-neonPurple hover:bg-purple-500 text-white shadow-[0_0_15px_rgba(168,85,247,0.4)]'}`}>
-                          {isVip || isUltimate ? 'Mở Công Cụ' : 'Nâng Cấp VIP'}
+                        <button className={`w-full py-2.5 rounded-lg font-bold text-sm transition ${isPlus || isUltimate ? 'bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700' : 'bg-neonPurple hover:bg-purple-500 text-white shadow-[0_0_15px_rgba(168,85,247,0.4)]'}`}>
+                          {isPlus || isUltimate ? 'Mở Công Cụ' : 'Nâng Cấp Plus'}
                         </button>
                       </div>
                     </div>
@@ -530,7 +541,7 @@ function HubContent() {
                             </span>
                           </div>
                           <h3 className="font-bold text-lg text-white mb-1">Combo Khởi nghiệp</h3>
-                          <p className="text-zinc-400 text-sm mb-4 line-clamp-2">Bao gồm Ban Content VIP, Tool Seeding Pro và Proxy 1 tháng.</p>
+                          <p className="text-zinc-400 text-sm mb-4 line-clamp-2">Bao gồm Ban Content Plus, Tool Seeding Pro và Proxy 1 tháng.</p>
                           <div className="flex items-center justify-between mt-auto">
                             <div>
                               <span className="text-xs text-zinc-500 line-through">1.500.000đ</span>
@@ -623,7 +634,7 @@ function HubContent() {
                   </div>
 
                   {/* Payment Method Tabs */}
-                  <div className="flex gap-2 border-b border-[#3A2266]/50 pb-4 mt-2">
+                  <div className="flex flex-wrap md:flex-nowrap gap-2 border-b border-[#3A2266]/50 pb-4 mt-2">
                     <button className="px-6 py-2.5 rounded-lg bg-zinc-800 text-white text-sm font-bold flex items-center gap-2 shadow-md">
                       <Building2 className="w-4 h-4" /> Chuyển khoản
                     </button>
@@ -645,7 +656,7 @@ function HubContent() {
                         </h4>
                         <div className="grid grid-cols-2 gap-3">
                           <div className="bg-black/40 border border-[#3A2266]/50 rounded-lg p-3 text-center">
-                            <p className="text-xs font-bold text-white">Gói VIP</p>
+                            <p className="text-xs font-bold text-white">Gói Plus</p>
                             <p className="text-sm font-bold text-blue-400 mt-1">499.000đ</p>
                           </div>
                           <div className="bg-black/40 border border-[#3A2266]/50 rounded-lg p-3 text-center">
@@ -741,7 +752,7 @@ function HubContent() {
                         </h4>
                         <p className="text-xs text-zinc-400 mb-4 leading-relaxed">Nếu đã chuyển khoản nhưng tiền chưa vào ví sau 5 phút hoặc gặp lỗi giao dịch — vui lòng liên hệ kèm mã tham chiếu + ảnh chụp giao dịch. Bấm vào nút bên dưới để mở app trực tiếp.</p>
                         
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div className="p-3 border border-[#3A2266]/50 bg-[#1A1025]/50 rounded-lg flex items-center justify-between group cursor-pointer hover:border-blue-500 transition">
                             <div>
                               <p className="text-[10px] text-zinc-500 font-bold mb-1">ĐIỆN THOẠI</p>
@@ -752,25 +763,25 @@ function HubContent() {
                           <div className="p-3 border border-[#3A2266]/50 bg-[#1A1025]/50 rounded-lg flex items-center justify-between group cursor-pointer hover:border-blue-500 transition">
                             <div>
                               <p className="text-[10px] text-zinc-500 font-bold mb-1">ZALO</p>
-                              <p className="text-sm font-medium text-zinc-300 group-hover:text-white truncate max-w-[100px]">zalo.me/g/nkgug288</p>
+                              <p className="text-sm font-medium text-zinc-300 group-hover:text-white sm:truncate sm:max-w-[100px]">zalo.me/g/nkgug288</p>
                             </div>
                             <ExternalLink className="w-4 h-4 text-zinc-600 group-hover:text-blue-400" />
                           </div>
                           <div className="p-3 border border-[#3A2266]/50 bg-[#1A1025]/50 rounded-lg flex items-center justify-between group cursor-pointer hover:border-blue-500 transition">
                             <div>
                               <p className="text-[10px] text-zinc-500 font-bold mb-1">TELEGRAM</p>
-                              <p className="text-sm font-medium text-zinc-300 group-hover:text-white truncate max-w-[100px]">+xA2lu1SgJPA3MmU1</p>
+                              <p className="text-sm font-medium text-zinc-300 group-hover:text-white sm:truncate sm:max-w-[100px]">+xA2lu1SgJPA3MmU1</p>
                             </div>
                             <ExternalLink className="w-4 h-4 text-zinc-600 group-hover:text-blue-400" />
                           </div>
                           <div className="p-3 border border-[#3A2266]/50 bg-[#1A1025]/50 rounded-lg flex items-center justify-between group cursor-pointer hover:border-blue-500 transition">
                             <div>
                               <p className="text-[10px] text-zinc-500 font-bold mb-1">EMAIL</p>
-                              <p className="text-sm font-medium text-zinc-300 group-hover:text-white truncate max-w-[100px]">chinhcongdaklak@gmail.com</p>
+                              <p className="text-sm font-medium text-zinc-300 group-hover:text-white sm:truncate sm:max-w-[100px]">chinhcongdaklak@gmail.com</p>
                             </div>
                             <ExternalLink className="w-4 h-4 text-zinc-600 group-hover:text-blue-400" />
                           </div>
-                          <div className="col-span-2 p-3 border border-[#3A2266]/50 bg-[#1A1025]/50 rounded-lg flex items-center justify-between group cursor-pointer hover:border-blue-500 transition">
+                          <div className="sm:col-span-2 p-3 border border-[#3A2266]/50 bg-[#1A1025]/50 rounded-lg flex items-center justify-between group cursor-pointer hover:border-blue-500 transition">
                             <div>
                               <p className="text-[10px] text-zinc-500 font-bold mb-1">FACEBOOK</p>
                               <p className="text-sm font-medium text-zinc-300 group-hover:text-white">Mở Messenger</p>
@@ -1208,7 +1219,7 @@ function HubContent() {
               )}
 
               {/* EMPTY STATES FOR OTHERS */}
-              {['workflows', 'courses'].includes(activeTab) && (
+              {['workflows', 'courses', 'analytics'].includes(activeTab) && (
                 <div className="flex flex-col items-center justify-center py-20 px-4 text-center rounded-2xl border border-[#3A2266]/50/80 bg-zinc-900/30 backdrop-blur">
                   <div className="w-20 h-20 bg-zinc-800/50 rounded-full flex items-center justify-center mb-6 border border-zinc-700">
                     <LayoutDashboard className="w-10 h-10 text-zinc-500" />

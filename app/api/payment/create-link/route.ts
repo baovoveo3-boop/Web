@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     });
 
     const body = await req.json();
-    const { amount, description, userId, userEmail } = body;
+    const { amount, description, userId, userEmail, type, toolIds } = body;
 
     if (!amount || !userId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -37,6 +37,8 @@ export async function POST(req: Request) {
       userEmail: userEmail || '',
       amount: amount,
       description: description || 'Nạp tiền vào ví',
+      type: type || 'topup', // 'topup' or 'direct_purchase'
+      toolIds: toolIds || [], // Array of string IDs if direct_purchase
       status: 'PENDING',
       createdAt: new Date().toISOString()
     });

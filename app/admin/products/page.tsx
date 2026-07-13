@@ -9,6 +9,7 @@ import Papa from "papaparse";
 import imageCompression from 'browser-image-compression';
 import { useAuth } from "@/context/AuthContext";
 import { logAdminAction } from "@/lib/adminLogger";
+import { TOOLS } from '@/data/tools';
 
 interface Product {
   id: string;
@@ -27,6 +28,13 @@ interface Product {
   faqs?: { question: string; answer: string }[];
   createdAt?: any;
   updatedAt?: any;
+  exec_file?: string;
+  version?: string;
+  download_url?: string;
+  force_update?: boolean;
+  allow_trial?: boolean;
+  resourceType?: "external_link" | "video";
+  resourceUrl?: string;
 }
 
 const compressImage = async (file: File) => {
@@ -62,6 +70,27 @@ const uploadToImgBB = async (file: File) => {
     throw new Error(data.error?.message || "Lỗi upload ImgBB");
   }
 };
+
+const convertGoogleDriveUrl = (url: string): string => {
+  if (!url) return "";
+  const trimmed = url.trim();
+  const fileMatch = trimmed.match(/\/file\/(?:u\/\d+\/)?d\/([a-zA-Z0-9_-]+)/);
+  if (fileMatch && fileMatch[1]) {
+    return `https://drive.google.com/uc?export=download&id=${fileMatch[1]}`;
+  }
+  const openMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (trimmed.includes("drive.google.com/open") && openMatch && openMatch[1]) {
+    return `https://drive.google.com/uc?export=download&id=${openMatch[1]}`;
+  }
+  return trimmed;
+};
+
+const SUGGESTIONS = [
+  { label: "Trang Download", markdown: "[Trang Download](/download)" },
+  { label: "Trang Khóa học", markdown: "[Khóa Học](/courses)" },
+  { label: "Trang Đăng nhập", markdown: "[Đăng Nhập](/login)" },
+  { label: "Khám phá Hub", markdown: "[Khám Phá Hub](/hub)" },
+];
 
 export default function AdminProducts() {
   const { userData } = useAuth();
@@ -102,9 +131,28 @@ export default function AdminProducts() {
   const [originalPrice, setOriginalPrice] = useState(0);
   const [badgeText, setBadgeText] = useState("");
   const [isFeatured, setIsFeatured] = useState(false);
-  const [features, setFeatures] = useState<{bold: string, text: string}[]>([]);
-  const [howToUse, setHowToUse] = useState<string[]>([]);
+  const [features, setFeatures] = useState<{ id: string; bold: string; text: string }[]>([]);
+  const [howToUse, setHowToUse] = useState<{ id: string; value: string }[]>([]);
+  const [generalDownloadUrl, setGeneralDownloadUrl] = useState<string>("");
   const [faqs, setFaqs] = useState<{question: string, answer: string}[]>([]);
+  
+  // Slash Command states
+  const [slashCommandContext, setSlashCommandContext] = useState<{
+    fieldType: 'howToUse' | 'faq-question' | 'faq-answer';
+    index: number;
+    triggerIndex: number;
+    query: string;
+  } | null>(null);
+  const [slashCommandSelectedIndex, setSlashCommandSelectedIndex] = useState(0);
+  
+  // Desktop App Config states
+  const [execFile, setExecFile] = useState("");
+  const [version, setVersion] = useState("");
+  const [downloadUrl, setDownloadUrl] = useState("");
+  const [forceUpdate, setForceUpdate] = useState(false);
+  const [allowTrial, setAllowTrial] = useState(false);
+  const [resourceType, setResourceType] = useState<"external_link" | "video" | "">("");
+  const [resourceUrl, setResourceUrl] = useState("");
   
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState("");
@@ -113,10 +161,192 @@ export default function AdminProducts() {
   
   const [submitting, setSubmitting] = useState(false);
 
+  // Hàm xử lý chuỗi: Biến slug thành tên File EXE chuẩn
+  const autoGenerateExecFileName = (slugStr: string) => {
+    if (!slugStr) return "";
+    const pascalCaseName = slugStr
+      .split('-')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join('');
+    return `${pascalCaseName}_Tool.exe`;
+  };
+
+  useEffect(() => {
+    if (!editingProduct) {
+      if (slug) {
+        setExecFile(autoGenerateExecFileName(slug));
+      } else {
+        setExecFile("");
+      }
+    }
+  }, [slug, editingProduct]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  const slashCommandTimeoutRef = useRef<any>(null);
+
+  // Slash Command Helpers
+  const cleanVietnameseInput = (str: string): string => {
+    return str
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'd')
+      .toLowerCase()
+      .replace(/[sfrxj]$/, ''); // Remove Telex tone marks at the end
+  };
+
+  const checkSlashCommandTrigger = (
+    value: string,
+    selectionStart: number,
+    fieldType: 'howToUse' | 'faq-question' | 'faq-answer',
+    index: number
+  ) => {
+    const textBeforeCursor = value.slice(0, selectionStart);
+    const lastSlashIndex = textBeforeCursor.lastIndexOf('/');
+
+    if (lastSlashIndex !== -1) {
+      const isStartOrPrecededBySpace = lastSlashIndex === 0 || /\s/.test(textBeforeCursor[lastSlashIndex - 1]);
+
+      if (isStartOrPrecededBySpace) {
+        const query = textBeforeCursor.slice(lastSlashIndex + 1);
+        if (/\s/.test(query)) {
+          setSlashCommandContext(null);
+          return;
+        }
+
+        setSlashCommandContext({
+          fieldType,
+          index,
+          triggerIndex: lastSlashIndex,
+          query,
+        });
+        setSlashCommandSelectedIndex(0);
+        return;
+      }
+    }
+    setSlashCommandContext(null);
+  };
+
+  const handleSelectSlashSuggestion = (markdown: string) => {
+    if (!slashCommandContext) return;
+    const { fieldType, index, triggerIndex, query } = slashCommandContext;
+
+    const inputId = `input-${fieldType}-${index}`;
+    const inputElement = document.getElementById(inputId) as HTMLInputElement | HTMLTextAreaElement;
+    if (!inputElement) {
+      setSlashCommandContext(null);
+      return;
+    }
+
+    const originalValue = inputElement.value;
+    const newValue = originalValue.slice(0, triggerIndex) + markdown + originalValue.slice(triggerIndex + 1 + query.length);
+
+    if (fieldType === 'howToUse') {
+      const newSteps = [...howToUse];
+      newSteps[index] = { ...newSteps[index], value: newValue };
+      setHowToUse(newSteps);
+    } else {
+      const newFaqs = [...faqs];
+      if (fieldType === 'faq-question') {
+        newFaqs[index] = { ...newFaqs[index], question: newValue };
+      } else {
+        newFaqs[index] = { ...newFaqs[index], answer: newValue };
+      }
+      setFaqs(newFaqs);
+    }
+
+    setSlashCommandContext(null);
+    setSlashCommandSelectedIndex(0);
+
+    const newCursorPosition = triggerIndex + markdown.length;
+    setTimeout(() => {
+      inputElement.focus();
+      inputElement.setSelectionRange(newCursorPosition, newCursorPosition);
+    }, 0);
+  };
+
+  const handleSlashCommandKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+    fieldType: 'howToUse' | 'faq-question' | 'faq-answer',
+    index: number,
+    filteredCount: number,
+    filteredSuggestions: typeof SUGGESTIONS
+  ) => {
+    if (filteredCount === 0) return;
+    if (!slashCommandContext || slashCommandContext.fieldType !== fieldType || slashCommandContext.index !== index) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSlashCommandSelectedIndex(prev => (prev + 1) % filteredCount);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSlashCommandSelectedIndex(prev => (prev - 1 + filteredCount) % filteredCount);
+    } else if (e.key === 'Enter') {
+      if (filteredCount > 0) {
+        e.preventDefault();
+        const selected = filteredSuggestions[slashCommandSelectedIndex];
+        if (selected) {
+          handleSelectSlashSuggestion(selected.markdown);
+        }
+      } else {
+        setSlashCommandContext(null);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setSlashCommandContext(null);
+    }
+  };
+
+  const filteredSuggestions = slashCommandContext
+    ? SUGGESTIONS.filter(item =>
+        cleanVietnameseInput(item.label).includes(cleanVietnameseInput(slashCommandContext.query))
+      )
+    : [];
+
+  const renderSlashCommandPopup = (
+    fieldType: 'howToUse' | 'faq-question' | 'faq-answer',
+    index: number
+  ) => {
+    if (
+      !slashCommandContext ||
+      slashCommandContext.fieldType !== fieldType ||
+      slashCommandContext.index !== index ||
+      filteredSuggestions.length === 0
+    ) {
+      return null;
+    }
+
+    return (
+      <div
+        data-testid="slash-suggestions-menu"
+        className="slash-suggestions-menu absolute left-0 right-0 top-full mt-1 z-50 bg-zinc-950 border border-zinc-800 rounded-lg shadow-xl overflow-hidden max-h-60 overflow-y-auto font-sans"
+        onMouseDown={(e) => e.preventDefault()}
+      >
+        {filteredSuggestions.map((item, sIdx) => {
+          const isSelected = slashCommandSelectedIndex === sIdx;
+          return (
+            <button
+              key={item.label}
+              type="button"
+              onClick={() => handleSelectSlashSuggestion(item.markdown)}
+              className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-center justify-between ${
+                isSelected
+                  ? "bg-zinc-800 text-white font-semibold"
+                  : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+              }`}
+            >
+              <span>{item.label}</span>
+              <span className="text-xs text-zinc-600 font-mono">{item.markdown}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
 
   const fetchProducts = async () => {
     try {
@@ -140,7 +370,11 @@ export default function AdminProducts() {
           features: data.features || [],
           howToUse: data.howToUse || [],
           faqs: data.faqs || [],
-          createdAt: data.createdAt
+          createdAt: data.createdAt,
+          exec_file: data.exec_file || "",
+          version: data.version || "",
+          download_url: data.download_url || "",
+          force_update: !!data.force_update
         });
       });
       setProducts(list);
@@ -153,7 +387,39 @@ export default function AdminProducts() {
 
   useEffect(() => {
     fetchProducts();
+    const fetchGeneralSettings = async () => {
+      try {
+        const docSnap = await getDoc(doc(db, "settings", "general"));
+        if (docSnap.exists()) {
+          setGeneralDownloadUrl(docSnap.data()?.download_url || "");
+        }
+      } catch (error) {
+        console.error("Lỗi khi tải cấu hình settings/general:", error);
+      }
+    };
+    fetchGeneralSettings();
   }, []);
+
+  useEffect(() => {
+    if (isModalOpen && !editingProduct && category === "tool") {
+      const autofillMessage = generalDownloadUrl
+        ? `Cài đặt App Launcher để tải và quản lý các tool. Link tải: ${generalDownloadUrl}`
+        : "";
+      setHowToUse((prev) => {
+        if (prev.length === 0) {
+          return [{ id: `step-${Date.now()}`, value: autofillMessage }];
+        }
+        if (prev.length === 1 && prev[0].value === "") {
+          return [{ id: prev[0].id, value: autofillMessage }];
+        }
+        return prev;
+      });
+    }
+  }, [category, isModalOpen, editingProduct, generalDownloadUrl]);
+
+  useEffect(() => {
+    setSlashCommandContext(null);
+  }, [isModalOpen, editingProduct]);
 
   const openAddModal = () => {
     setEditingProduct(null);
@@ -176,6 +442,13 @@ export default function AdminProducts() {
       { question: "Tôi có được hỗ trợ nếu gặp lỗi không?", answer: "Có, team support luôn sẵn sàng hỗ trợ bạn 24/7 qua Zalo hoặc Nhóm riêng." },
       { question: "Cách kích hoạt và sử dụng như thế nào?", answer: "Sau khi thanh toán thành công, hệ thống sẽ tự động gửi thông tin kích hoạt và Video hướng dẫn chi tiết vào Hub của bạn." }
     ]);
+    setExecFile("");
+    setVersion("");
+    setDownloadUrl("");
+    setForceUpdate(false);
+    setAllowTrial(false);
+    setResourceType("");
+    setResourceUrl("");
     setIsModalOpen(true);
   };
 
@@ -194,10 +467,38 @@ export default function AdminProducts() {
     setImageFile(null);
     setImagePreview(product.imageUrl);
     
-    setGalleryItems(product.gallery?.map((url, idx) => ({ id: `ext-${idx}-${Date.now()}`, type: 'existing', url })) || []);
-    setFeatures(product.features || []);
-    setHowToUse(product.howToUse || []);
-    setFaqs(product.faqs || []);
+    setGalleryItems(product.gallery?.map((url: string, idx: number) => ({ id: `ext-${idx}-${Date.now()}`, type: 'existing', url })) || []);
+    
+    const staticData = TOOLS.find(t => t.id === product.id);
+    const rawFeatures = (product.features && product.features.length > 0) ? product.features : (staticData?.features || []);
+    setFeatures(rawFeatures.map((f: any, idx: number) => ({
+      id: f.id || `feature-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 9)}`,
+      bold: f.bold || "",
+      text: f.text || ""
+    })));
+    
+    const rawHowToUse = (product.howToUse && product.howToUse.length > 0) ? product.howToUse : (staticData?.howToUse || []);
+    setHowToUse(rawHowToUse.map((step: any, idx: number) => {
+      if (typeof step === 'string') {
+        return {
+          id: `step-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 9)}`,
+          value: step
+        };
+      }
+      return {
+        id: step.id || `step-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 9)}`,
+        value: step.value || ""
+      };
+    }));
+        setFaqs((product.faqs && product.faqs.length > 0) ? product.faqs : (staticData?.faq || []));
+        
+    setExecFile(product.exec_file || "");
+    setVersion(product.version || "");
+    setDownloadUrl(product.download_url || "");
+    setForceUpdate(product.force_update || false);
+    setAllowTrial(product.allow_trial || false);
+    setResourceType(product.resourceType || "");
+    setResourceUrl(product.resourceUrl || "");
     
     setIsModalOpen(true);
   };
@@ -280,7 +581,7 @@ export default function AdminProducts() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!slug || !name || !description || price <= 0) {
+    if (!slug || !name || !description || price < 0) {
       alert("Vui lòng điền đầy đủ các trường bắt buộc (Mã, Tên, Mô tả, Giá bán)!");
       return;
     }
@@ -333,8 +634,16 @@ export default function AdminProducts() {
             
             const finalGalleryUrls = newGalleryUrls;
 
+            const convertedDownloadUrl = category === "tool" ? convertGoogleDriveUrl(downloadUrl) : "";
+            
+            const sanitizedFeatures = features.map(f => ({
+              bold: f.bold || "",
+              text: f.text || ""
+            }));
+            const sanitizedHowToUse = howToUse.map(step => step.value || "");
+
             const productData = {
-              category,
+              category: category.toLowerCase() === "miễn phí" ? "free" : category,
               type,
               name,
               description,
@@ -344,9 +653,16 @@ export default function AdminProducts() {
               isFeatured,
               imageUrl: finalImageUrl,
               gallery: finalGalleryUrls,
-              features,
-              howToUse,
+              features: sanitizedFeatures,
+              howToUse: sanitizedHowToUse,
               faqs,
+              exec_file: category === "tool" ? execFile : "",
+              version: category === "tool" ? version : "",
+              download_url: convertedDownloadUrl,
+              force_update: category === "tool" ? forceUpdate : false,
+              allow_trial: category === "tool" ? allowTrial : false,
+              resourceType: (category === "free" || category.toLowerCase() === "miễn phí") ? resourceType : "",
+              resourceUrl: (category === "free" || category.toLowerCase() === "miễn phí") ? resourceUrl : "",
             };
 
             // Sanitize data to remove any undefined fields recursively (Firestore hates undefined)
@@ -442,6 +758,10 @@ export default function AdminProducts() {
       "Trả Lời 2",
       "Câu Hỏi 3",
       "Trả Lời 3",
+      "File thực thi (exec_file)",
+      "Phiên bản (version)",
+      "Đường dẫn tải xuống (download_url)",
+      "Yêu cầu cập nhật (force_update)",
     ];
 
     let data: any[] = [];
@@ -459,12 +779,18 @@ export default function AdminProducts() {
         "TRUE", // Nổi bật
         "", // Link Ảnh
         "", // Link Slide
-        "Khóa học này học trong bao lâu?", 
-        "Học trọn đời, bạn có thể xem lại bất kỳ lúc nào.",
-        "Có hỗ trợ sau khi học không?", 
-        "Có, bạn sẽ được thêm vào group Zalo kín để giảng viên hỗ trợ trực tiếp.",
-        "Hình thức thanh toán như thế nào?", 
-        "Bạn có thể chuyển khoản ngân hàng hoặc thanh toán qua ví điện tử."
+        "[]", // Tính năng
+        "[]", // Cách dùng
+        "Khóa học này học trong bao lâu?", // Q1
+        "Học trọn đời, bạn có thể xem lại bất kỳ lúc nào.", // A1
+        "Có hỗ trợ sau khi học không?", // Q2
+        "Có, bạn sẽ được thêm vào group Zalo kín để giảng viên hỗ trợ trực tiếp.", // A2
+        "Hình thức thanh toán như thế nào?", // Q3
+        "Bạn có thể chuyển khoản ngân hàng hoặc thanh toán qua ví điện tử.", // A3
+        "", // exec_file
+        "", // version
+        "", // download_url
+        "FALSE" // force_update
       ]];
     } else {
       data = products.map((p) => [
@@ -487,6 +813,10 @@ export default function AdminProducts() {
         p.faqs?.[1]?.answer || "Có, bạn sẽ được thêm vào group Zalo kín để giảng viên hỗ trợ trực tiếp.",
         p.faqs?.[2]?.question || "Hình thức thanh toán như thế nào?",
         p.faqs?.[2]?.answer || "Bạn có thể chuyển khoản ngân hàng hoặc thanh toán qua ví điện tử.",
+        p.exec_file || "",
+        p.version || "",
+        p.download_url || "",
+        p.force_update ? "TRUE" : "FALSE",
       ]);
     }
 
@@ -554,6 +884,10 @@ export default function AdminProducts() {
               features: parsedFeatures,
               howToUse: parsedHowToUse,
               faqs: faqs,
+              exec_file: row["File thực thi (exec_file)"] || "",
+              version: row["Phiên bản (version)"] || "",
+              download_url: convertGoogleDriveUrl(row["Đường dẫn tải xuống (download_url)"] || ""),
+              force_update: row["Yêu cầu cập nhật (force_update)"]?.toString().toUpperCase() === "TRUE",
               updatedAt: serverTimestamp()
             };
 
@@ -696,19 +1030,24 @@ export default function AdminProducts() {
       )}
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/75 p-4 overflow-y-auto pt-16 pb-16">
-          <div className="relative w-full max-w-4xl rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
-            <button
-              onClick={() => setIsModalOpen(false)}
-              className="absolute right-4 top-4 text-zinc-400 hover:text-white"
-            >
-              <X className="h-5 w-5" />
-            </button>
-            <h2 className="text-xl font-bold text-white mb-6">
-              {editingProduct ? "Chỉnh sửa sản phẩm" : "Thêm sản phẩm mới"}
-            </h2>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="relative w-full max-w-4xl flex flex-col max-h-[90vh] rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl">
+            {/* Modal Header */}
+            <div className="shrink-0 flex items-center justify-between p-6 border-b border-zinc-800">
+              <h2 className="text-xl font-bold text-white">
+                {editingProduct ? "Chỉnh sửa sản phẩm" : "Thêm sản phẩm mới"}
+              </h2>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-zinc-400 hover:text-white transition"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
 
-            <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Modal Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <form id="product-form" onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-4">
                 <div className="flex gap-4">
                   <div className="flex-1">
@@ -799,6 +1138,115 @@ export default function AdminProducts() {
                     className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-white focus:outline-none focus:border-neonPurple"
                   />
                 </div>
+
+                {category === "tool" && (
+                  <div className="pt-4 border-t border-zinc-800 space-y-4">
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider text-neonPurple">
+                      Cấu hình Desktop App
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                          File thực thi (exec_file)
+                        </label>
+                        <input
+                          type="text"
+                          value={execFile}
+                          onChange={(e) => setExecFile(e.target.value)}
+                          placeholder={slug ? `Tự động sinh: ${autoGenerateExecFileName(slug)}` : "Tự động sinh: [TênTool]_Tool.exe"}
+                          className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-white focus:outline-none focus:border-neonPurple placeholder-zinc-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                          Phiên bản (version)
+                        </label>
+                        <input
+                          type="text"
+                          value={version}
+                          onChange={(e) => setVersion(e.target.value)}
+                          placeholder="VD: 1.0.0"
+                          className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-white focus:outline-none focus:border-neonPurple"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                        Đường dẫn tải xuống (download_url)
+                      </label>
+                      <input
+                        type="text"
+                        value={downloadUrl}
+                        onChange={(e) => setDownloadUrl(e.target.value)}
+                        placeholder="Nhập link Google Drive..."
+                        className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-white focus:outline-none focus:border-neonPurple"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg border border-zinc-800 bg-zinc-950">
+                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+                        Bắt buộc cập nhật (force_update)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setForceUpdate(!forceUpdate)}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${forceUpdate ? 'bg-neonPurple' : 'bg-zinc-700'}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${forceUpdate ? 'translate-x-6' : 'translate-x-1'}`} />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 rounded-lg border border-zinc-800 bg-zinc-950">
+                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+                        Cho phép dùng thử (allow_trial)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setAllowTrial(!allowTrial)}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${allowTrial ? 'bg-neonGreen' : 'bg-zinc-700'}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${allowTrial ? 'translate-x-6' : 'translate-x-1'}`} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {(category === "free" || category.toLowerCase() === "miễn phí") && (
+                  <div className="pt-4 border-t border-zinc-800 space-y-4">
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider text-neonGreen">
+                      Cấu hình Tài Nguyên Miễn Phí
+                    </h3>
+                    <div className="grid grid-cols-1 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                          Loại Tài Nguyên
+                        </label>
+                        <select
+                          value={resourceType}
+                          onChange={(e) => setResourceType(e.target.value as any)}
+                          className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-[9px] text-white focus:outline-none focus:border-neonGreen"
+                        >
+                          <option value="">(Mặc định - Bài viết)</option>
+                          <option value="external_link">Link Tool ngoài (Chuyển trang)</option>
+                          <option value="video">Video hướng dẫn (Nhúng Youtube)</option>
+                        </select>
+                      </div>
+                      {(resourceType === "external_link" || resourceType === "video") && (
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                            Đường link (Url)
+                          </label>
+                          <input
+                            type="text"
+                            value={resourceUrl}
+                            onChange={(e) => setResourceUrl(e.target.value)}
+                            placeholder={resourceType === "video" ? "Nhập link Youtube (hoặc bỏ trống nếu chưa có)..." : "Nhập link đích..."}
+                            className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-white focus:outline-none focus:border-neonGreen"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex gap-4">
                   <div className="flex-1">
@@ -948,7 +1396,7 @@ export default function AdminProducts() {
                   </label>
                   <button
                     type="button"
-                    onClick={() => setFeatures([...features, { bold: "", text: "" }])}
+                    onClick={() => setFeatures([...features, { id: `feature-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, bold: "", text: "" }])}
                     className="text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white px-3 py-1.5 rounded flex items-center gap-1 transition"
                   >
                     <Plus className="w-3 h-3" /> Thêm tính năng
@@ -956,29 +1404,65 @@ export default function AdminProducts() {
                 </div>
                 <div className="space-y-3">
                   {features.map((feature, idx) => (
-                    <div key={idx} className="flex gap-3 items-start bg-zinc-900/50 p-3 rounded-lg border border-zinc-800">
+                    <div key={feature.id} className="flex gap-3 items-start bg-zinc-900/50 p-3 rounded-lg border border-zinc-800">
                       <div className="flex-1 space-y-2">
                         <input
                           type="text"
                           value={feature.bold}
                           onChange={(e) => {
                             const newFeatures = [...features];
-                            newFeatures[idx].bold = e.target.value;
+                            newFeatures[idx] = { ...newFeatures[idx], bold: e.target.value };
                             setFeatures(newFeatures);
                           }}
-                          placeholder="Tiêu đề (VD: Tích hợp All-in-one:)"
+                          placeholder="Nhập tính năng..."
                           className="w-full rounded bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-neonPurple font-bold"
                         />
                         <textarea
                           value={feature.text}
                           onChange={(e) => {
                             const newFeatures = [...features];
-                            newFeatures[idx].text = e.target.value;
+                            newFeatures[idx] = { ...newFeatures[idx], text: e.target.value };
                             setFeatures(newFeatures);
                           }}
                           placeholder="Mô tả chi tiết..."
                           className="w-full rounded bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-neonPurple h-16 resize-none"
                         />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <button
+                          type="button"
+                          title="Di chuyển lên"
+                          disabled={idx === 0 || features.length === 1}
+                          onClick={() => {
+                            if (idx > 0) {
+                              const newFeatures = [...features];
+                              const temp = newFeatures[idx];
+                              newFeatures[idx] = newFeatures[idx - 1];
+                              newFeatures[idx - 1] = temp;
+                              setFeatures(newFeatures);
+                            }
+                          }}
+                          className="p-1 rounded bg-zinc-950 border border-zinc-800 hover:border-neonPurple disabled:opacity-30 disabled:hover:border-zinc-800 transition"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          title="Di chuyển xuống"
+                          disabled={idx === features.length - 1 || features.length === 1}
+                          onClick={() => {
+                            if (idx < features.length - 1) {
+                              const newFeatures = [...features];
+                              const temp = newFeatures[idx];
+                              newFeatures[idx] = newFeatures[idx + 1];
+                              newFeatures[idx + 1] = temp;
+                              setFeatures(newFeatures);
+                            }
+                          }}
+                          className="p-1 rounded bg-zinc-950 border border-zinc-800 hover:border-neonPurple disabled:opacity-30 disabled:hover:border-zinc-800 transition"
+                        >
+                          ↓
+                        </button>
                       </div>
                       <button
                         type="button"
@@ -1005,32 +1489,95 @@ export default function AdminProducts() {
                   </label>
                   <button
                     type="button"
-                    onClick={() => setHowToUse([...howToUse, ""])}
+                    onClick={() => {
+                      setSlashCommandContext(null);
+                      setHowToUse([...howToUse, { id: `step-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, value: "" }]);
+                    }}
                     className="text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white px-3 py-1.5 rounded flex items-center gap-1 transition"
                   >
-                    <Plus className="w-3 h-3" /> Thêm bước
+                    <Plus className="w-3 h-3" /> Thêm hướng dẫn
                   </button>
                 </div>
                 <div className="space-y-3">
                   {howToUse.map((step, idx) => (
-                    <div key={idx} className="flex gap-3 items-center bg-zinc-900/50 p-3 rounded-lg border border-zinc-800">
+                    <div key={step.id} className="flex gap-3 items-center bg-zinc-900/50 p-3 rounded-lg border border-zinc-800">
                       <div className="w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-bold text-zinc-400 shrink-0">
                         {idx + 1}
                       </div>
-                      <input
-                        type="text"
-                        value={step}
-                        onChange={(e) => {
-                          const newSteps = [...howToUse];
-                          newSteps[idx] = e.target.value;
-                          setHowToUse(newSteps);
-                        }}
-                        placeholder={`Bước ${idx + 1}...`}
-                        className="w-full rounded bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-neonPurple"
-                      />
+                      <div className="relative w-full">
+                        <input
+                          id={`input-howToUse-${idx}`}
+                          type="text"
+                          value={step.value}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const newSteps = [...howToUse];
+                            newSteps[idx] = { ...newSteps[idx], value: val };
+                            setHowToUse(newSteps);
+                            checkSlashCommandTrigger(val, e.target.selectionStart || 0, 'howToUse', idx);
+                          }}
+                          onKeyDown={(e) => handleSlashCommandKeyDown(e, 'howToUse', idx, filteredSuggestions.length, filteredSuggestions)}
+                          onBlur={() => {
+                            slashCommandTimeoutRef.current = setTimeout(() => {
+                              setSlashCommandContext(null);
+                            }, 150);
+                          }}
+                          onFocus={() => {
+                            if (slashCommandTimeoutRef.current) {
+                              clearTimeout(slashCommandTimeoutRef.current);
+                              slashCommandTimeoutRef.current = null;
+                            }
+                          }}
+                          placeholder="Nhập bước hướng dẫn..."
+                          className="w-full rounded bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-neonPurple"
+                        />
+                        {renderSlashCommandPopup('howToUse', idx)}
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <button
+                          type="button"
+                          title="Di chuyển lên"
+                          disabled={idx === 0 || howToUse.length === 1}
+                          onClick={() => {
+                            setSlashCommandContext(null);
+                            if (idx > 0) {
+                              const newSteps = [...howToUse];
+                              const temp = newSteps[idx];
+                              newSteps[idx] = newSteps[idx - 1];
+                              newSteps[idx - 1] = temp;
+                              setHowToUse(newSteps);
+                            }
+                          }}
+                          className="p-1 rounded bg-zinc-950 border border-zinc-800 hover:border-neonPurple disabled:opacity-30 disabled:hover:border-zinc-800 transition"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          title="Di chuyển xuống"
+                          disabled={idx === howToUse.length - 1 || howToUse.length === 1}
+                          onClick={() => {
+                            setSlashCommandContext(null);
+                            if (idx < howToUse.length - 1) {
+                              const newSteps = [...howToUse];
+                              const temp = newSteps[idx];
+                              newSteps[idx] = newSteps[idx + 1];
+                              newSteps[idx + 1] = temp;
+                              setHowToUse(newSteps);
+                            }
+                          }}
+                          className="p-1 rounded bg-zinc-950 border border-zinc-800 hover:border-neonPurple disabled:opacity-30 disabled:hover:border-zinc-800 transition"
+                        >
+                          ↓
+                        </button>
+                      </div>
                       <button
                         type="button"
-                        onClick={() => setHowToUse(howToUse.filter((_, i) => i !== idx))}
+                        title="Xóa bước"
+                        onClick={() => {
+                          setSlashCommandContext(null);
+                          setHowToUse(howToUse.filter((_, i) => i !== idx));
+                        }}
                         className="p-2 text-zinc-500 hover:text-red-500 bg-zinc-950 rounded border border-zinc-800 hover:border-red-500 transition shrink-0"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -1053,7 +1600,10 @@ export default function AdminProducts() {
                   </label>
                   <button
                     type="button"
-                    onClick={() => setFaqs([...faqs, { question: "", answer: "" }])}
+                    onClick={() => {
+                      setSlashCommandContext(null);
+                      setFaqs([...faqs, { question: "", answer: "" }]);
+                    }}
                     className="text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white px-3 py-1.5 rounded flex items-center gap-1 transition"
                   >
                     <Plus className="w-3 h-3" /> Thêm câu hỏi
@@ -1063,31 +1613,70 @@ export default function AdminProducts() {
                   {faqs.map((faq, idx) => (
                     <div key={idx} className="flex gap-3 items-start bg-zinc-900/50 p-3 rounded-lg border border-zinc-800">
                       <div className="flex-1 space-y-2">
-                        <input
-                          type="text"
-                          value={faq.question}
-                          onChange={(e) => {
-                            const newFaqs = [...faqs];
-                            newFaqs[idx].question = e.target.value;
-                            setFaqs(newFaqs);
-                          }}
-                          placeholder="Câu hỏi (Ví dụ: Dùng được vĩnh viễn không?)"
-                          className="w-full rounded bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-neonPurple"
-                        />
-                        <textarea
-                          value={faq.answer}
-                          onChange={(e) => {
-                            const newFaqs = [...faqs];
-                            newFaqs[idx].answer = e.target.value;
-                            setFaqs(newFaqs);
-                          }}
-                          placeholder="Câu trả lời..."
-                          className="w-full rounded bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-neonPurple h-16 resize-none"
-                        />
+                        <div className="relative w-full">
+                          <input
+                            id={`input-faq-question-${idx}`}
+                            type="text"
+                            value={faq.question}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const newFaqs = [...faqs];
+                              newFaqs[idx] = { ...newFaqs[idx], question: val };
+                              setFaqs(newFaqs);
+                              checkSlashCommandTrigger(val, e.target.selectionStart || 0, 'faq-question', idx);
+                            }}
+                            onKeyDown={(e) => handleSlashCommandKeyDown(e, 'faq-question', idx, filteredSuggestions.length, filteredSuggestions)}
+                            onBlur={() => {
+                              slashCommandTimeoutRef.current = setTimeout(() => {
+                                setSlashCommandContext(null);
+                              }, 150);
+                            }}
+                            onFocus={() => {
+                              if (slashCommandTimeoutRef.current) {
+                                clearTimeout(slashCommandTimeoutRef.current);
+                                slashCommandTimeoutRef.current = null;
+                              }
+                            }}
+                            placeholder="Câu hỏi (Ví dụ: Dùng được vĩnh viễn không?)"
+                            className="w-full rounded bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-neonPurple"
+                          />
+                          {renderSlashCommandPopup('faq-question', idx)}
+                        </div>
+                        <div className="relative w-full">
+                          <textarea
+                            id={`input-faq-answer-${idx}`}
+                            value={faq.answer}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const newFaqs = [...faqs];
+                              newFaqs[idx] = { ...newFaqs[idx], answer: val };
+                              setFaqs(newFaqs);
+                              checkSlashCommandTrigger(val, e.target.selectionStart || 0, 'faq-answer', idx);
+                            }}
+                            onKeyDown={(e) => handleSlashCommandKeyDown(e, 'faq-answer', idx, filteredSuggestions.length, filteredSuggestions)}
+                            onBlur={() => {
+                              slashCommandTimeoutRef.current = setTimeout(() => {
+                                setSlashCommandContext(null);
+                              }, 150);
+                            }}
+                            onFocus={() => {
+                              if (slashCommandTimeoutRef.current) {
+                                clearTimeout(slashCommandTimeoutRef.current);
+                                slashCommandTimeoutRef.current = null;
+                              }
+                            }}
+                            placeholder="Câu trả lời..."
+                            className="w-full rounded bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-neonPurple h-16 resize-none"
+                          />
+                          {renderSlashCommandPopup('faq-answer', idx)}
+                        </div>
                       </div>
                       <button
                         type="button"
-                        onClick={() => setFaqs(faqs.filter((_, i) => i !== idx))}
+                        onClick={() => {
+                          setSlashCommandContext(null);
+                          setFaqs(faqs.filter((_, i) => i !== idx));
+                        }}
                         className="p-2 text-zinc-500 hover:text-red-500 bg-zinc-950 rounded border border-zinc-800 hover:border-red-500 transition shrink-0"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -1101,27 +1690,31 @@ export default function AdminProducts() {
                   )}
                 </div>
               </div>
+              </form>
+            </div>
+            
+            {/* Modal Footer */}
+            <div className="shrink-0 p-4 border-t border-zinc-800 bg-zinc-900 flex justify-end gap-3 rounded-b-2xl">
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="px-6 py-2 text-sm text-zinc-400 hover:text-white transition"
+              >
+                Hủy
+              </button>
+              <button
+                type="submit"
+                form="product-form"
+                disabled={submitting}
+                className="px-8 py-2 text-sm font-bold text-white bg-neonPurple hover:bg-neonPurple-dark rounded-lg transition disabled:opacity-50 flex items-center gap-2"
+              >
+                {submitting && (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-t-transparent border-white"></div>
+                )}
+                {editingProduct ? "Cập nhật sản phẩm" : "Lưu Sản Phẩm Mới"}
+              </button>
+            </div>
 
-              <div className="col-span-1 md:col-span-2 pt-6 border-t border-zinc-800 flex justify-end gap-3 mt-4">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-6 py-2 text-sm text-zinc-400 hover:text-white transition"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-8 py-2 text-sm font-bold text-white bg-neonPurple hover:bg-neonPurple-dark rounded-lg transition disabled:opacity-50 flex items-center gap-2"
-                >
-                  {submitting && (
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-t-transparent border-white"></div>
-                  )}
-                  {editingProduct ? "Cập nhật sản phẩm" : "Lưu Sản Phẩm Mới"}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

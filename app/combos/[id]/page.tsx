@@ -5,12 +5,17 @@ import ComboDetailClient from '@/components/ComboDetailClient';
 import { Metadata } from 'next';
 
 export async function generateStaticParams() {
-  const querySnapshot = await getDocs(collection(db, "products"));
-  const paths: { id: string }[] = [];
-  querySnapshot.forEach((doc) => {
-    paths.push({ id: doc.id });
-  });
-  return paths;
+  try {
+    const querySnapshot = await getDocs(collection(db, "products"));
+    const paths: { id: string }[] = [];
+    querySnapshot.forEach((doc) => {
+      paths.push({ id: doc.id });
+    });
+    return paths;
+  } catch (error) {
+    console.error("Error generating static params for combos:", error);
+    return [{ id: 'all-in-one-combo' }];
+  }
 }
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {

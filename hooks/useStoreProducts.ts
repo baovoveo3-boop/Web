@@ -79,7 +79,7 @@ export const useStoreProducts = () => {
             badgeColor: badgeColor,
             themeClasses: theme,
             icon: icon,
-            actionText: data.price > 0 ? "Mua ngay" : "Tải xuống",
+            actionText: data.price > 0 ? "Mua ngay" : "Xem chi tiết",
             rating: "5.0",
             category: (data.category || "").toLowerCase(),
             image: data.imageUrl || data.mainImageUrl || "/software-box.jpg",

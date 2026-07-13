@@ -14,6 +14,17 @@ export default function Header() {
   const { cartItems, setIsCartOpen } = useCart();
   const { user, userData, logout } = useAuth();
 
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
+
   const handleAnchorClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
     if (href.startsWith('/#')) {
       if (typeof window !== 'undefined' && window.location.pathname === '/') {
@@ -73,77 +84,102 @@ export default function Header() {
         </div>
       )}
 
+      {/* Backdrop overlay */}
+      {isOpen && (
+        <div
+          data-testid="mobile-menu-backdrop"
+          className="bg-black/50 backdrop-blur-sm fixed inset-0 z-40 transition-opacity md:hidden"
+          onClick={() => setIsOpen(false)}
+        />
+      )}
+
       {/* Main Navigation */}
-      <div className="w-full border-b border-zinc-800 bg-zinc-950/90 backdrop-blur-md">
+      <div className="w-full border-b border-zinc-800 bg-zinc-950/90 backdrop-blur-md relative z-50">
         <div className="mx-auto flex max-w-7xl items-center justify-between p-4 md:px-8">
           
           {/* Brand Logo */}
-          <Link href="/" className="flex items-center hover:opacity-80 transition shrink-0">
+          <Link href="/" data-testid="brand-logo" className="flex items-center hover:opacity-80 transition shrink-0">
             <img src="/logo.jpeg" alt="Ban Content Logo" className="w-32 md:w-40 h-auto object-contain mix-blend-screen origin-left" />
           </Link>
 
           {/* Desktop Nav Links */}
           <nav className="hidden md:flex items-center gap-6 text-sm font-medium">
-            <Link href="/#combos" onClick={(e) => handleAnchorClick(e, '/#combos')} className="text-zinc-300 hover:text-white transition flex items-center gap-1">
-              <span>📦</span> Combo
+            <Link href="/" data-testid="nav-link-home" className="text-zinc-300 hover:text-white transition flex items-center gap-1">
+              <span>🏠</span> Trang chủ
             </Link>
-            <Link href="/#tools" onClick={(e) => handleAnchorClick(e, '/#tools')} className="text-zinc-300 hover:text-white transition flex items-center gap-1">
-              <span>🔧</span> Công cụ
-            </Link>
-            <Link href="/#courses" onClick={(e) => handleAnchorClick(e, '/#courses')} className="text-zinc-300 hover:text-white transition flex items-center gap-1">
-              <span>📚</span> Khóa học
-            </Link>
-            <Link href="/#pricing" onClick={(e) => handleAnchorClick(e, '/#pricing')} className="text-zinc-300 hover:text-white transition flex items-center gap-1">
+            <Link href="/#pricing" data-testid="nav-link-pricing" onClick={(e) => handleAnchorClick(e, '/#pricing')} className="text-zinc-300 hover:text-white transition flex items-center gap-1">
               <span>💎</span> Bảng giá
             </Link>
-            <Link href="/#free" onClick={(e) => handleAnchorClick(e, '/#free')} className="text-zinc-300 hover:text-white transition flex items-center gap-1">
+            <Link href="/#tools" data-testid="nav-link-tools" onClick={(e) => handleAnchorClick(e, '/#tools')} className="text-zinc-300 hover:text-white transition flex items-center gap-1">
+              <span>🔧</span> Công cụ
+            </Link>
+            <Link href="/#combos" data-testid="nav-link-combos" onClick={(e) => handleAnchorClick(e, '/#combos')} className="text-zinc-300 hover:text-white transition flex items-center gap-1">
+              <span>📦</span> Combo
+            </Link>
+            <Link href="/#courses" data-testid="nav-link-courses" onClick={(e) => handleAnchorClick(e, '/#courses')} className="text-zinc-300 hover:text-white transition flex items-center gap-1">
+              <span>📚</span> Khóa học
+            </Link>
+            <Link href="/#free" data-testid="nav-link-free" onClick={(e) => handleAnchorClick(e, '/#free')} className="text-zinc-300 hover:text-white transition flex items-center gap-1">
               <span>🎁</span> Miễn Phí
+            </Link>
+            <Link href="/download" data-testid="nav-link-download" className={`${pathname === '/download' ? 'text-neonPurple active' : 'text-zinc-300'} hover:text-white transition flex items-center gap-1`}>
+              <span>📥</span> Download
             </Link>
           </nav>
 
           {/* Right Actions */}
-          <div className="hidden md:flex items-center gap-4">
-            <button className="text-zinc-400 hover:text-white transition flex items-center gap-1 text-sm">
-              <Globe className="h-4 w-4" /> VN
-            </button>
-            <button className="text-zinc-400 hover:text-red-400 transition">
-              <Heart className="h-5 w-5" />
-            </button>
-            <button onClick={() => setIsCartOpen(true)} className="text-zinc-400 hover:text-neonGreen transition relative">
-              <ShoppingCart className="h-5 w-5" />
-              {cartItems.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full">
-                  {cartItems.length}
-                </span>
-              )}
-            </button>
-            
-            {user ? (
-              <div className="flex items-center gap-4 ml-2">
-                {(userData?.role === "admin" || userData?.role === "super_admin") && (
-                  <Link href="/admin" className="text-sm font-semibold text-zinc-300 hover:text-white transition mr-1">
-                    Admin Panel
+          <div className="hidden md:flex items-start gap-4">
+            <div className="flex flex-col items-end justify-center gap-2">
+              {/* Top Row: User / Auth */}
+              {user ? (
+                <div className="flex items-center gap-4">
+                  {(userData?.role === "admin" || userData?.role === "super_admin") && (
+                    <Link href="/admin" className="text-sm font-semibold text-zinc-300 hover:text-white transition">
+                      Admin Panel
+                    </Link>
+                  )}
+                  <Link href="/hub" className="text-sm font-bold text-white bg-gradient-to-r from-neonPurple to-neonPurple-dark px-4 py-1.5 rounded-lg hover:shadow-[0_0_15px_rgba(168,85,247,0.5)] transition flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-full bg-zinc-800 flex items-center justify-center overflow-hidden border border-zinc-700 text-[10px] font-bold uppercase">
+                      {userData?.displayName?.charAt(0) || user.email?.charAt(0) || "U"}
+                    </div>
+                    {userData?.displayName?.split(' ')[0] || "Hub"}
                   </Link>
-                )}
-                <Link href="/hub" className="text-sm font-bold text-white bg-gradient-to-r from-neonPurple to-neonPurple-dark px-4 py-2 rounded-lg hover:shadow-[0_0_15px_rgba(168,85,247,0.5)] transition flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center overflow-hidden border border-zinc-700 text-xs font-bold uppercase">
-                    {userData?.displayName?.charAt(0) || user.email?.charAt(0) || "U"}
-                  </div>
-                  {userData?.displayName?.split(' ')[0] || "Hub"}
-                </Link>
-                <button onClick={() => logout()} className="text-zinc-500 hover:text-red-400 transition" title="Đăng xuất">
-                  <LogOut className="h-5 w-5" />
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Link href="/login" className="text-sm font-medium text-zinc-300 hover:text-white px-3 py-1.5">
+                    Đăng Nhập
+                  </Link>
+                  <Link href="/login" className="text-sm font-bold text-white bg-gradient-to-r from-neonPurple to-neonPurple-dark px-4 py-1.5 rounded-lg hover:shadow-[0_0_15px_rgba(168,85,247,0.5)] transition">
+                    Đăng Ký
+                  </Link>
+                </div>
+              )}
+
+              {/* Bottom Row: Icons */}
+              <div className="flex items-center gap-5">
+                <button className="text-zinc-400 hover:text-white transition flex items-center gap-1.5 text-xs font-medium">
+                  <Globe className="h-3.5 w-3.5" /> VN
+                </button>
+                <button className="text-zinc-400 hover:text-red-400 transition">
+                  <Heart className="h-4 w-4" />
+                </button>
+                <button onClick={() => setIsCartOpen(true)} className="text-zinc-400 hover:text-neonGreen transition relative">
+                  <ShoppingCart className="h-4 w-4" />
+                  {cartItems.length > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-bold w-3.5 h-3.5 flex items-center justify-center rounded-full">
+                      {cartItems.length}
+                    </span>
+                  )}
                 </button>
               </div>
-            ) : (
-              <div className="flex items-center gap-2 ml-2">
-                <Link href="/login" className="text-sm font-medium text-zinc-300 hover:text-white px-3 py-2">
-                  Đăng Nhập
-                </Link>
-                <Link href="/login" className="text-sm font-bold text-white bg-gradient-to-r from-neonPurple to-neonPurple-dark px-4 py-2 rounded-lg hover:shadow-[0_0_15px_rgba(168,85,247,0.5)] transition">
-                  Đăng Ký
-                </Link>
-              </div>
+            </div>
+
+            {/* Logout Button outside the column so icons align with User Button */}
+            {user && (
+              <button onClick={() => logout()} className="text-zinc-500 hover:text-red-400 transition mt-2" title="Đăng xuất">
+                <LogOut className="h-4 w-4" />
+              </button>
             )}
           </div>
 
@@ -159,6 +195,7 @@ export default function Header() {
             </button>
             <button
               onClick={() => setIsOpen(!isOpen)}
+              data-testid="menu-toggle-btn"
               className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-900 hover:text-white focus:outline-none"
               aria-label="Toggle menu"
             >
@@ -169,14 +206,33 @@ export default function Header() {
 
         {/* Mobile Navigation Dropdown */}
         <nav
-          className={`${
-            isOpen ? 'flex' : 'hidden'
-          } absolute left-0 right-0 top-full flex-col gap-4 border-b border-zinc-800 bg-zinc-950 p-6 md:hidden shadow-xl`}
+          className={`absolute left-0 right-0 top-full flex flex-col gap-4 border-b border-zinc-800 bg-zinc-950 p-6 shadow-xl md:hidden z-50 transition-all duration-300 ease-in-out ${
+            isOpen
+              ? 'opacity-100 translate-y-0 pointer-events-auto'
+              : 'opacity-0 -translate-y-4 pointer-events-none'
+          }`}
         >
-          <Link href="/#combos" className="text-sm font-medium text-zinc-400 hover:text-white transition" onClick={(e) => handleAnchorClick(e, '/#combos')}>Combo</Link>
-          <Link href="/#tools" className="text-sm font-medium text-zinc-400 hover:text-white transition" onClick={(e) => handleAnchorClick(e, '/#tools')}>Công cụ</Link>
-          <Link href="/#courses" className="text-sm font-medium text-zinc-400 hover:text-white transition" onClick={(e) => handleAnchorClick(e, '/#courses')}>Khóa học</Link>
-          <Link href="/#free" className="text-sm font-medium text-zinc-400 hover:text-white transition" onClick={(e) => handleAnchorClick(e, '/#free')}>Miễn Phí</Link>
+          <Link href="/" data-testid="nav-link-home" className="text-sm font-medium text-zinc-400 hover:text-white transition flex items-center gap-1" onClick={() => setIsOpen(false)}>
+            <span>🏠</span> Trang chủ
+          </Link>
+          <Link href="/#pricing" data-testid="nav-link-pricing" className="text-sm font-medium text-zinc-400 hover:text-white transition flex items-center gap-1" onClick={(e) => handleAnchorClick(e, '/#pricing')}>
+            <span>💎</span> Bảng giá
+          </Link>
+          <Link href="/#tools" data-testid="nav-link-tools" className="text-sm font-medium text-zinc-400 hover:text-white transition flex items-center gap-1" onClick={(e) => handleAnchorClick(e, '/#tools')}>
+            <span>🔧</span> Công cụ
+          </Link>
+          <Link href="/#combos" data-testid="nav-link-combos" className="text-sm font-medium text-zinc-400 hover:text-white transition flex items-center gap-1" onClick={(e) => handleAnchorClick(e, '/#combos')}>
+            <span>📦</span> Combo
+          </Link>
+          <Link href="/#courses" data-testid="nav-link-courses" className="text-sm font-medium text-zinc-400 hover:text-white transition flex items-center gap-1" onClick={(e) => handleAnchorClick(e, '/#courses')}>
+            <span>📚</span> Khóa học
+          </Link>
+          <Link href="/#free" data-testid="nav-link-free" className="text-sm font-medium text-zinc-400 hover:text-white transition flex items-center gap-1" onClick={(e) => handleAnchorClick(e, '/#free')}>
+            <span>🎁</span> Miễn Phí
+          </Link>
+          <Link href="/download" data-testid="nav-link-download" className={`${pathname === '/download' ? 'text-neonPurple active' : 'text-zinc-300'} text-sm font-medium hover:text-white transition flex items-center gap-1`} onClick={() => setIsOpen(false)}>
+            <span>📥</span> Download
+          </Link>
           <hr className="border-zinc-800" />
           <div className="flex flex-col gap-3">
             {user ? (

@@ -5,6 +5,9 @@ const nextConfig = {
   },
   // Ensure strict export behaviors
   reactStrictMode: true,
+  experimental: {
+    serverComponentsExternalPackages: ['firebase-admin'],
+  },
 };
 
 module.exports = nextConfig;

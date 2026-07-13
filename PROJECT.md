@@ -1,30 +1,42 @@
-# Project: Advanced Reporting Dashboard
+# Project: Slash Command suggestions popup for Admin Products Form
 
 ## Architecture
-- **Tech Stack**: Next.js (App Router), React, Tailwind CSS, Lucide icons, Recharts for data visualization.
-- **Database (Firebase Firestore)**:
-  - `users`: Track user growth via `createdAt`.
-  - `orders`: Calculate product purchases/revenue via `status == 'COMPLETED'`, `items` (for product names/rankings), and `createdAt`.
-  - `transactions`: Calculate wallet top-ups/deposits via `status == 'SUCCESS'` and `createdAt`. Also calculate success vs failure rates from transaction status.
-  - `products`: Fetch product catalogs if needed to resolve display names, though order items contain names.
-- **Routing**: Integrated into `/admin` page (`app/admin/page.tsx`), maintaining original layout and security guards.
+- **Tech Stack**: Next.js (App Router), React 18, Tailwind CSS, Lucide icons.
+- **Target File**: `app/admin/products/page.tsx`
+- **Popup UI**: A floating suggestions box (dropdown menu) absolute-positioned right below the active input field. Styled in line with the site's dark mode (dark background, borders, hover states).
+- **Trigger**: The menu shows up when typing `/` inside any "Cách sử dụng" (howToUse) input, "Câu hỏi" (faq.question) input, or "Câu trả lời" (faq.answer) textarea.
+- **Link suggestions**:
+  - Trang Download: `[Trang Download](/download)`
+  - Trang Khóa học: `[Khóa Học](/courses)`
+  - Trang Đăng nhập: `[Đăng Nhập](/login)`
+  - Khám phá Hub: `[Khám Phá Hub](/hub)`
+- **Auto-complete logic**:
+  - Replacing the text from the last `/` in the input with the selected markdown link.
+  - Hiding/closing the popup menu immediately.
+  - Automatically closing the popup when focus is lost (onBlur) or when `/` is deleted.
+- **State Management**:
+  - Local state in `app/admin/products/page.tsx` to handle the active input's ID, position, visibility, suggestions list, and cursor details.
+  - Ensure zero typescript strict mode compilation failures (`tsc --noEmit`).
+  - Render optimized so that updates do not lag the dynamic fields.
 
 ## Milestones
-| # | Name | Scope | Dependencies | Status |
-|---|------|-------|-------------|--------|
-| 1 | Dependency Setup | Install `recharts` package, configure and verify compilation | None | DONE |
-| 2 | Frontend Implementation | Update `app/admin/page.tsx` to query data, apply time-range filters, and render Recharts visual components | M1 | DONE |
-| 3 | Verification & Auditing | Run E2E test suite, perform integrity audit with Forensic Auditor | M2 | DONE |
+| # | Name | Track | Scope | Dependencies | Status |
+|---|---|---|---|---|---|
+| 1 | E2E Test Suite Creation | Testing | Design and write comprehensive E2E tests in `e2e/slash_command.spec.ts` covering normal, boundary, cross-feature, and edge cases | None | DONE |
+| 2 | Slash Command Implementation | Implementation | Implement the slash suggestions popup and auto-complete logic in `app/admin/products/page.tsx` | M1 | DONE |
+| 3 | E2E Verification & Audit | Implementation | Run Playwright test suite, verify styling, typescript types, and run Forensic Integrity Auditor | M1, M2 | DONE |
 
 ## Code Layout
-- `package.json` - Target for dependency updates.
-- `app/admin/page.tsx` - Admin overview dashboard.
+- `app/admin/products/page.tsx` - Products management dashboard page with form fields.
+- `e2e/slash_command.spec.ts` - Playwright E2E verification test suite.
 
 ## Interface Contracts
-- **Time Filter Boundaries** (relative to the current system time):
-  - Today (Hôm nay): >= start of today (00:00:00 local)
-  - This Week (Tuần này): >= start of current week (Monday 00:00:00 local)
-  - This Month (Tháng này): >= start of current month (1st of month 00:00:00 local)
-  - This Year (Năm nay): >= start of current year (Jan 1st 00:00:00 local)
-- **Data Schemas**:
-  - `Order.createdAt`, `User.createdAt`, `Transaction.createdAt` must be parsed safely using standard date parsing utility supporting Firestore Timestamp and strings.
+- **Suggestions markdown links list**:
+  - `[Trang Download](/download)`
+  - `[Khóa Học](/courses)`
+  - `[Đăng Nhập](/login)`
+  - `[Khám Phá Hub](/hub)`
+- **Popup Closure criteria**:
+  - Selection of a suggestion link.
+  - Clicking outside the input or dropdown.
+  - Deleting the trigger `/`.

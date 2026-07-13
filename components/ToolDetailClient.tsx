@@ -11,6 +11,8 @@ import { useCart } from '@/app/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
 import CheckoutModal from '@/components/CheckoutModal';
 import { ToolData } from '@/data/tools';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 interface ToolDetailClientProps {
   tool: ToolData;
@@ -23,6 +25,99 @@ export default function ToolDetailClient({ tool }: ToolDetailClientProps) {
   const { user, userData } = useAuth();
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [promoParam, setPromoParam] = useState('');
+  const [isDirectPurchasing, setIsDirectPurchasing] = useState(false);
+  const [isActivatingTrial, setIsActivatingTrial] = useState(false);
+  const enableTrial = tool.allow_trial === true;
+
+  const handleTrial = async () => {
+    if (!user) {
+      alert("Vui lòng đăng nhập để nhận dùng thử!");
+      return;
+    }
+    setIsActivatingTrial(true);
+    try {
+      const res = await fetch('/api/trial', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.uid, toolId: tool.id })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert("Đã kích hoạt 3 ngày dùng thử thành công!");
+      } else {
+        alert("Lỗi: " + (data.error || 'Unknown Error'));
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Lỗi kết nối đến máy chủ.");
+    } finally {
+      setIsActivatingTrial(false);
+    }
+  };
+
+  const handleDirectPurchase = async () => {
+    if (!user) {
+      alert("Vui lòng đăng nhập để mua hàng!");
+      return;
+    }
+    const cleanPrice = parseInt(tool.price.replace(/[^\d]/g, ''), 10);
+    if (!cleanPrice || isNaN(cleanPrice)) {
+      alert("Lỗi: Không thể định dạng giá sản phẩm.");
+      return;
+    }
+    setIsDirectPurchasing(true);
+    try {
+      const res = await fetch('/api/payment/create-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: cleanPrice,
+          description: `Mua ${tool.name}`,
+          userId: user.uid,
+          userEmail: user.email,
+          type: 'direct_purchase',
+          toolIds: [tool.id]
+        })
+      });
+      const data = await res.json();
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+      } else {
+        alert("Lỗi tạo mã thanh toán: " + (data.error || 'Unknown Error'));
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Không thể kết nối đến máy chủ thanh toán.");
+    } finally {
+      setIsDirectPurchasing(false);
+    }
+  };
+
+  // Helper to parse [Text](URL) into clickable links
+  const renderTextWithLinks = (text: string) => {
+    if (!text) return text;
+    const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    const parts: (string | JSX.Element)[] = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = markdownLinkRegex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(text.substring(lastIndex, match.index));
+      }
+      const isInternal = match[2].startsWith('/');
+      parts.push(
+        <Link key={match.index} href={match[2]} target={isInternal ? undefined : "_blank"} rel={isInternal ? undefined : "noopener noreferrer"} className="text-neonPurple hover:underline font-bold">
+          {match[1]}
+        </Link>
+      );
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < text.length) {
+      parts.push(text.substring(lastIndex));
+    }
+    return parts.length > 0 ? <>{parts}</> : text;
+  };
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -87,7 +182,7 @@ export default function ToolDetailClient({ tool }: ToolDetailClientProps) {
             Home
           </Link>
           <span>/</span>
-          <Link href="/#tools" className="text-zinc-400 hover:text-white transition">
+          <Link href="/#tools" data-testid="breadcrumb-tools" className="text-zinc-400 hover:text-white transition">
             Tools
           </Link>
           <span>/</span>
@@ -108,13 +203,14 @@ export default function ToolDetailClient({ tool }: ToolDetailClientProps) {
             {/* Left Column: Media Showcase, How to Use, FAQ */}
             <div className="lg:col-span-8 space-y-8">
               {/* Media Showcase & Gallery */}
-              <div className="flex flex-col gap-6">
+              <div data-testid="tool-media-container" className="flex flex-col gap-6">
                 {/* Khung kính Glassmorphism (Product Box) */}
                 <div className="w-full flex justify-center items-center">
                   <div className="relative w-full max-w-[320px] aspect-square rounded-2xl overflow-hidden border border-zinc-700/80 bg-[#050505] shadow-[0_0_40px_rgba(168,85,247,0.25)] transition-all duration-500 hover:shadow-[0_0_60px_rgba(168,85,247,0.4)] hover:border-neonPurple/50 group">
                     <div className={`absolute inset-0 bg-gradient-to-tr ${tool.glow} via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-10 pointer-events-none`}></div>
                     <img 
                       src={tool.image} 
+                      data-testid="tool-image"
                       alt={tool.name} 
                       className="w-full h-full object-cover transform group-hover:scale-105 transition duration-700 ease-out relative z-0" 
                     />
@@ -154,7 +250,7 @@ export default function ToolDetailClient({ tool }: ToolDetailClientProps) {
                       <span className="w-8 h-8 rounded-full bg-neonPurple/20 text-neonPurple flex items-center justify-center font-bold flex-shrink-0">
                         {idx + 1}
                       </span>
-                      <p className="text-zinc-300 text-sm md:text-base leading-relaxed break-words">{step}</p>
+                      <p className="text-zinc-300 text-sm md:text-base leading-relaxed break-words">{renderTextWithLinks(step)}</p>
                     </div>
                   ))}
                 </div>
@@ -235,12 +331,31 @@ export default function ToolDetailClient({ tool }: ToolDetailClientProps) {
                   </span>
                 </div>
 
-                <div className="flex gap-2 pt-2">
+                <div className="flex flex-col gap-3 pt-2">
+                  {enableTrial && (
+                    <button 
+                      onClick={handleTrial}
+                      disabled={isActivatingTrial}
+                      className="w-full py-3 rounded-xl font-bold text-center text-zinc-950 bg-gradient-to-r from-yellow-400 to-amber-500 hover:scale-[1.02] transition transform shadow-[0_0_20px_rgba(251,191,36,0.3)] block text-sm"
+                    >
+                      {isActivatingTrial ? "Đang xử lý..." : "🎁 Nhận 3 Ngày Dùng Thử"}
+                    </button>
+                  )}
                   <button 
-                    onClick={handleDownloadTool}
-                    className="flex-1 py-4 rounded-xl font-bold text-zinc-950 bg-gradient-to-r from-neonGreen to-emerald-400 hover:scale-[1.02] transition transform shadow-[0_0_20px_rgba(34,197,94,0.3)] text-center text-base"
+                    onClick={handleDirectPurchase}
+                    disabled={isDirectPurchasing}
+                    className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-bold text-zinc-950 bg-gradient-to-r from-neonGreen to-emerald-400 hover:scale-[1.02] transition transform shadow-[0_0_20px_rgba(34,197,94,0.3)] text-base"
                   >
-                    Tải Công Cụ Này
+                    {isDirectPurchasing ? (
+                      <span className="flex items-center gap-2">
+                        <span className="w-5 h-5 border-2 border-zinc-950/30 border-t-zinc-950 rounded-full animate-spin"></span>
+                        Đang tạo Link...
+                      </span>
+                    ) : (
+                      <>
+                        <span>⚡ Mua Trực Tiếp (PayOS)</span>
+                      </>
+                    )}
                   </button>
                   <button 
                     onClick={() => {
@@ -253,10 +368,11 @@ export default function ToolDetailClient({ tool }: ToolDetailClientProps) {
                       });
                       alert('Đã thêm vào giỏ hàng!');
                     }}
-                    className="w-14 h-14 shrink-0 flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 hover:border-zinc-500 transition text-white"
-                    title="Thêm vào giỏ"
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 hover:border-zinc-500 transition text-white font-semibold text-sm"
+                    title="Thêm vào giỏ hàng"
                   >
                     <ShoppingCart className="w-5 h-5" />
+                    <span>🛒 Thêm Vào Giỏ Hàng (Mua bằng ví)</span>
                   </button>
                 </div>
               </div>
